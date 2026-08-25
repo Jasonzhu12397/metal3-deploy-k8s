@@ -1,0 +1,15 @@
+{# Metal3 IPAM / provisioning network config, driven off `metal3` dict:
+   { provisioning_interface, provisioning_dhcp_start, provisioning_dhcp_end,
+     provisioning_dhcp_prefix, ironic_endpoint, provisioning_limit } #}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metal3-ipam-config
+  namespace: {{ metal3.namespace | default('metal3') }}
+data:
+  provisioning_interface: "{{ metal3.provisioning_interface | default('bond_control') }}"
+  provisioning_dhcp_start: "{{ metal3.provisioning_dhcp_start }}"
+  provisioning_dhcp_end: "{{ metal3.provisioning_dhcp_end }}"
+  provisioning_dhcp_prefix: "{{ metal3.provisioning_dhcp_prefix | default(24) }}"
+  ironic_endpoint: "{{ metal3.ironic_endpoint }}"
+  provisioning_limit: "{{ metal3.provisioning_limit | default(20) }}"

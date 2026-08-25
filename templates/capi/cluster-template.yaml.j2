@@ -1,0 +1,162 @@
+{# CAPI + Metal3 manifests for the target production cluster.
+   `cluster` is expected to look roughly like:
+   {
+     name, namespace, control_plane_count, control_plane_endpoint,
+     pod_cidr, service_cidr, k8s_version,
+     worker_pools: [{name, count, node_labels: [...]}]
+   }
+#}
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [{{ cluster.pod_cidr | default('192.168.0.0/16') }}]
+    services:
+      cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: {{ cluster.name }}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: Metal3Cluster
+    name: {{ cluster.name }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  controlPlaneEndpoint:
+    host: {{ cluster.control_plane_endpoint }}
+    port: {{ cluster.control_plane_port | default(6443) }}
+  noCloudProvider: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      image:
+        url: {{ cluster.image_url | default('http://images.local/EricssonCCD.qcow2') }}
+        checksum: {{ cluster.image_checksum | default('') }}
+      dataTemplate:
+        name: {{ cluster.name }}-controlplane-template
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  replicas: {{ cluster.control_plane_count | default(3) }}
+  version: {{ cluster.k8s_version | default('v1.29.0') }}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: Metal3MachineTemplate
+      name: {{ cluster.name }}-control-plane
+  kubeadmConfigSpec:
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: ""
+{% if cluster.control_plane_reserved_cpus is defined %}
+          reserved-cpus: "{{ cluster.control_plane_reserved_cpus }}"
+          cpu-manager-policy: "{{ cluster.control_plane_cpu_manager_policy | default('static') }}"
+          topology-manager-policy: "{{ cluster.control_plane_topology_manager_policy | default('single-numa-node') }}"
+{% endif %}
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          cloud-provider: ""
+{% if cluster.control_plane_hugepage_count_1gb is defined and cluster.control_plane_hugepage_count_1gb %}
+    preKubeadmCommands:
+      - "echo {{ cluster.control_plane_hugepage_count_1gb }} > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages"
+{% if cluster.control_plane_hugepage_count_2mb is defined and cluster.control_plane_hugepage_count_2mb %}
+      - "echo {{ cluster.control_plane_hugepage_count_2mb }} > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
+{% endif %}
+{% endif %}
+{% if cluster.allow_workloads_on_control_plane | default(false) %}
+    postKubeadmCommands:
+      # Single-node (or otherwise workload-bearing) control plane: drop the
+      # NoSchedule taint kubeadm applies by default so pods can actually
+      # run here. Runs on each control-plane node against its own kubelet
+      # identity, so it's safe even if control_plane_count > 1.
+      - "kubectl --kubeconfig /etc/kubernetes/admin.conf taint node $(hostname) node-role.kubernetes.io/control-plane- --overwrite || true"
+{% endif %}
+{% for pool in cluster.worker_pools %}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      image:
+        url: {{ cluster.image_url | default('http://images.local/EricssonCCD.qcow2') }}
+        checksum: {{ cluster.image_checksum | default('') }}
+      dataTemplate:
+        name: {{ cluster.name }}-{{ pool.name }}-template
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+{% if pool.node_labels %}
+            node-labels: "{{ pool.node_labels | join(',') }}"
+{% endif %}
+{% if pool.reserved_cpus is defined %}
+            reserved-cpus: "{{ pool.reserved_cpus }}"
+            cpu-manager-policy: "{{ pool.cpu_manager_policy | default('static') }}"
+            topology-manager-policy: "{{ pool.topology_manager_policy | default('single-numa-node') }}"
+{% endif %}
+{% if pool.hugepage_count_1gb is defined and pool.hugepage_count_1gb %}
+      preKubeadmCommands:
+        - "echo {{ pool.hugepage_count_1gb }} > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages"
+{% if pool.hugepage_count_2mb is defined and pool.hugepage_count_2mb %}
+        - "echo {{ pool.hugepage_count_2mb }} > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
+{% endif %}
+{% endif %}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterName: {{ cluster.name }}
+  replicas: {{ pool.count }}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: {{ cluster.name }}
+      version: {{ cluster.k8s_version | default('v1.29.0') }}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: {{ cluster.name }}-{{ pool.name }}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: Metal3MachineTemplate
+        name: {{ cluster.name }}-{{ pool.name }}
+{% endfor %}

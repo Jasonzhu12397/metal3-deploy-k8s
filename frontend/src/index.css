@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+@theme {
+  /* sidebar / chrome */
+  --color-navy-950: #0b0f1c;
+  --color-navy-900: #10152a;
+  --color-navy-800: #1a2140;
+  --color-navy-700: #232c52;
+
+  /* brand */
+  --color-brand-50: #eef3ff;
+  --color-brand-100: #dce6ff;
+  --color-brand-500: #2f6feb;
+  --color-brand-600: #2557c7;
+  --color-brand-700: #1c449e;
+
+  /* surfaces */
+  --color-bg: #f3f5f9;
+  --color-surface: #ffffff;
+  --color-border: #e5e8f0;
+  --color-border-strong: #d3d8e4;
+
+  /* text */
+  --color-ink: #1a2233;
+  --color-ink-muted: #667085;
+  --color-ink-faint: #98a2b3;
+
+  /* status */
+  --color-success: #16a34a;
+  --color-success-soft: #e8f7ee;
+  --color-processing: #2f6feb;
+  --color-processing-soft: #eaf1fe;
+  --color-warning: #d97706;
+  --color-warning-soft: #fdf3e3;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fdeceb;
+  --color-idle: #6b7280;
+  --color-idle-soft: #eef0f3;
+
+  /* signature: CPU core-map (reserved vs isolated cores) */
+  --color-core-reserved: #d97706;
+  --color-core-isolated: #0d9488;
+  --color-core-off: #e5e8f0;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* reusable component-level classes kept outside Tailwind's utility soup on purpose */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 21, 42, 0.04);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 7px;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--color-brand-500);
+  color: white;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-brand-600);
+}
+.btn-secondary {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-ink);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-brand-500);
+  color: var(--color-brand-600);
+}
+.btn-danger {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-danger);
+}
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-ink-muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-idle-soft);
+  color: var(--color-ink);
+}
+
+.input {
+  width: 100%;
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.input:focus {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: -1px;
+  border-color: var(--color-brand-500);
+}
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  margin-bottom: 4px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #aab3cc;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+.nav-link.active {
+  background: var(--color-brand-500);
+  color: white;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}

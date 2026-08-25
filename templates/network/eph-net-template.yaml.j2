@@ -1,0 +1,45 @@
+{# Network config for the ephemeral (in-memory, PXE-booted) bootstrap node
+   that runs the temporary single-node management cluster used to stand up
+   the target cluster via Cluster API. `net` dict shape:
+   { interfaces: [{name, type, state, mtu, ipv4: {...}}], routes: [...] } #}
+interfaces:
+{% for iface in net.interfaces %}
+  - name: {{ iface.name }}
+    type: {{ iface.type }}
+    state: {{ iface.state | default('up') }}
+{% if iface.mtu is defined %}
+    mtu: {{ iface.mtu }}
+{% endif %}
+{% if iface.ipv4 is defined %}
+    ipv4:
+      enabled: {{ iface.ipv4.enabled | default(true) | lower }}
+      dhcp: {{ iface.ipv4.dhcp | default(false) | lower }}
+{% if iface.ipv4.address is defined %}
+      address:
+{% for addr in iface.ipv4.address %}
+        - ip: {{ addr.ip }}
+          prefix-length: {{ addr.prefix }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if iface.link_aggregation is defined %}
+    link-aggregation:
+      mode: {{ iface.link_aggregation.mode }}
+      port:
+{% for p in iface.link_aggregation.port %}
+        - interface-name: {{ p }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% if net.routes %}
+routes:
+  config:
+{% for r in net.routes %}
+    - destination: {{ r.destination }}
+      next-hop-interface: {{ r.next_hop_interface }}
+{% if r.next_hop_address is defined %}
+      next-hop-address: {{ r.next_hop_address }}
+{% endif %}
+      table-id: {{ r.table_id | default(254) }}
+{% endfor %}
+{% endif %}

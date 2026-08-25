@@ -1,0 +1,12 @@
+# This is NOT a standalone compose file -- the real one is in the project
+# root (../docker-compose.yml). It uses build contexts relative to the repo
+# root (./backend, ./frontend, ./templates), so running `docker compose`
+# from *this* directory would resolve those paths wrong.
+#
+# Always run docker compose from the project root:
+#   cd metal3-deploy-k8s-backend
+#   docker compose up -d --build
+#
+# This `deploy/` directory only holds the supporting assets the root
+# compose file references: postgres/init.sql, redis/redis.conf, and the
+# deploy/kubeconfig/ mount point for the management-cluster kubeconfig.

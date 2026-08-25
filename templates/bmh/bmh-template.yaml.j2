@@ -1,0 +1,36 @@
+{# Renders one BareMetalHost per host. Secrets are referenced by name only
+   -- create them separately via the BMC/Secret API, never inline here. #}
+{% for h in hosts %}
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: {{ h.name }}
+  namespace: {{ h.namespace | default('metal3') }}
+  labels:
+    nodeType: {{ h.node_type | default('worker') }}
+    node-pool-name: {{ h.node_pool_name }}
+{% if h.pcc_mm_pod is defined %}
+    pcc-controller/pcc-mm-pod: {{ h.pcc_mm_pod }}
+{% endif %}
+{% if h.pcc_sm_pod is defined %}
+    pcc-controller/pcc-sm-pod: {{ h.pcc_sm_pod }}
+{% endif %}
+{% if h.annotations is defined %}
+  annotations:
+{% for k, v in h.annotations.items() %}
+    {{ k }}: {{ v }}
+{% endfor %}
+{% endif %}
+spec:
+  bmc:
+    address: {{ h.bmc_address }}
+    credentialsName: {{ h.secret_ref }}
+    disableCertificateVerification: {{ h.disable_certificate_verification | default(true) | lower }}
+  bootMACAddress: {{ h.boot_mac_address }}
+  online: {{ h.online | default(false) | lower }}
+{% if h.root_device_hint_model is defined %}
+  rootDeviceHints:
+    model: {{ h.root_device_hint_model }}
+{% endif %}
+---
+{% endfor %}
