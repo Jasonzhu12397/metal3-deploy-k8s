@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metal3-deploy-api
+  namespace: metal3
+  labels:
+    app: metal3-deploy-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metal3-deploy-api
+  template:
+    metadata:
+      labels:
+        app: metal3-deploy-api
+    spec:
+      # This is what makes in-cluster auth work -- services/kubernetes.py
+      # falls through to config.load_incluster_config() whenever
+      # MGMT_KUBECONFIG_PATH is unset, which uses this ServiceAccount's
+      # auto-mounted token. No kubeconfig file, no volume for one.
+      serviceAccountName: metal3-deploy-backend
+      containers:
+        - name: api
+          image: metal3-deploy-api:latest # replace with your registry/tag, e.g. the cr-registry addon
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: metal3-deploy-config
+            - secretRef:
+                name: metal3-deploy-secrets
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metal3-deploy-api
+  namespace: metal3
+spec:
+  selector:
+    app: metal3-deploy-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

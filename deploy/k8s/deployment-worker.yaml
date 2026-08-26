@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metal3-deploy-worker
+  namespace: metal3
+  labels:
+    app: metal3-deploy-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metal3-deploy-worker
+  template:
+    metadata:
+      labels:
+        app: metal3-deploy-worker
+    spec:
+      # Same ServiceAccount as the api Deployment -- the worker is the
+      # thing that actually calls apply_cluster()/register_host() from
+      # inside deployment_tasks.py, so it needs the exact same RBAC.
+      serviceAccountName: metal3-deploy-backend
+      containers:
+        - name: worker
+          image: metal3-deploy-api:latest # same image as the api Deployment
+          command: ["celery", "-A", "app.tasks.deployment_tasks.celery_app", "worker", "--loglevel=INFO"]
+          envFrom:
+            - configMapRef:
+                name: metal3-deploy-config
+            - secretRef:
+                name: metal3-deploy-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"

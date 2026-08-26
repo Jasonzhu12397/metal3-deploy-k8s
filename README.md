@@ -118,6 +118,11 @@ Progress is broadcast over `GET /api/v1/deployments/{id}/ws`.
 
 ## Quick start
 
+**Two deployment models** -- pick one:
+
+- **In-cluster (recommended for real use)**: run the api/worker as pods inside the management cluster itself, authenticating via the pod's own ServiceAccount -- no kubeconfig file needed anywhere. See **[deploy/k8s/README.md](./deploy/k8s/README.md)**.
+- **docker-compose (local dev/test)**: runs on a separate host, needs a kubeconfig for the management cluster copied in manually (this can't be automated -- a kubeconfig only exists once a real cluster does):
+
 ```bash
 cp .env.example .env            # edit values
 ./scripts/install.sh

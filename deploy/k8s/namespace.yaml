@@ -1,0 +1,8 @@
+# Only needed if the management cluster doesn't already have this
+# namespace -- Metal3/CAPI deployments very often already do (it's the
+# default CAPI_NAMESPACE this whole project assumes: "metal3"). Skip this
+# file (or `kubectl apply` everything else without it) if so.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metal3

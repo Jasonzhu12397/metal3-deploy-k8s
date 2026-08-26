@@ -1,0 +1,23 @@
+# Non-secret configuration. DATABASE_URL/REDIS_URL host portions here
+# assume you're pointing at managed Postgres/Redis already reachable from
+# the management cluster -- swap for your real endpoints. See
+# postgres.yaml/redis.yaml in this directory for a self-contained
+# (dev-grade, not HA) fallback if you don't have those yet.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metal3-deploy-config
+  namespace: metal3
+data:
+  ENV: "production"
+  DEBUG: "false"
+  CAPI_NAMESPACE: "metal3"
+  BMH_READY_TIMEOUT: "1800"
+  CLUSTER_PROVISION_TIMEOUT: "7200"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  ADMIN_USERNAME: "admin"
+  # Deliberately NOT setting MGMT_KUBECONFIG_PATH here -- leaving it unset
+  # is what makes services/kubernetes.py fall through to
+  # load_incluster_config() and authenticate as this pod's own
+  # ServiceAccount (see serviceaccount.yaml + rbac.yaml) instead of
+  # expecting a mounted kubeconfig file.

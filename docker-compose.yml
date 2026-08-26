@@ -30,7 +30,8 @@ services:
 
   api:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
@@ -39,6 +40,11 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
+      # Dev convenience only -- overlays the image's baked-in /templates so
+      # you can edit a .j2 file and see it without rebuilding. The image
+      # itself is self-contained without this (see backend/Dockerfile);
+      # a Kubernetes Deployment has nothing to mount this from and doesn't
+      # need to -- it just uses what's baked in.
       - ./templates:/templates:ro
       - ${MGMT_KUBECONFIG_HOST_PATH:-./deploy/kubeconfig}:/secrets/kubeconfig:ro
     ports:
@@ -51,7 +57,8 @@ services:
 
   worker:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: ["celery", "-A", "app.tasks.deployment_tasks.celery_app", "worker", "--loglevel=INFO"]
     env_file: .env

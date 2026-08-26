@@ -1,6 +1,9 @@
 # 安装手册 (INSTALL)
 
-本手册说明如何在本地/测试环境把 `metal3-deploy-k8s-backend` 跑起来。生产环境部署（比如把 API/worker 部署进 K8s 而不是 docker-compose）思路一样，只是把这里的容器换成 Deployment/StatefulSet，具体看文末"生产化建议"。
+本手册说明如何把 `metal3-deploy-k8s-backend` 跑起来，两条路选一条：
+
+1. **docker-compose，跑在管理集群外面的另一台机器上**——本手册接下来的内容，适合本地开发/测试。这条路需要手动把管理集群的 kubeconfig 拿到本地（见第 4 节，以及为什么这一步**没法自动化**）。
+2. **直接部署进管理集群内部（in-cluster，推荐用于实际环境）**——不需要 kubeconfig，Pod 用自己的 ServiceAccount 自动认证。这条路走 `deploy/k8s/README.md`，完整的 Deployment/RBAC/ConfigMap/Secret 清单都在那。**如果你打算长期在真实环境跑这套系统，建议直接跳过本手册剩下的部分，去看 `deploy/k8s/README.md`。**
 
 这份安装手册跟你选哪个 `infrastructure_provider`（metal3/openstack/vsphere/kubevirt）无关——安装步骤是一样的，区别只在建集群之后你怎么用（见 USAGE.md）。如果要部署到 OpenStack/vSphere/KubeVirt，额外要做的是：在管理集群上先装好对应的 CAPI provider（CAPO/CAPV/CAPK）和它需要的凭证 Secret（比如 OpenStack 的 `clouds.yaml`、vCenter 的用户名密码），这些不归这个后端管——它只负责渲染引用这些 Secret 名字的 YAML，不负责创建凭证本身。
 
@@ -12,7 +15,7 @@
 |---|---|---|
 | Docker | 24+ | 跑 postgres/redis/api/worker |
 | Docker Compose | v2 (`docker compose`, 不是 `docker-compose`) | |
-| 一个可达的 metal3 管理集群 kubeconfig | - | 这是**必须**的，本项目不负责把 baremetal-operator/Ironic/CAPI 装进管理集群，只负责调用它们的 API。管理集群指的是你现有流程里那个 ephemeral/PXE 节点起的单节点集群，或者一个常驻的 CAPI management cluster |
+| 一个可达的 metal3 管理集群 kubeconfig | - | **只有走 docker-compose 这条路才需要**。本项目不负责把 baremetal-operator/Ironic/CAPI 装进管理集群，只负责调用它们的 API——kubeconfig 本质是"怎么连到一个已经存在的集群"的凭证，这个集群不存在，kubeconfig 就生成不出来，所以这一步没法自动化。如果你是走 in-cluster 部署（见 `deploy/k8s/README.md`），完全不需要这个，跳过 |
 | （可选）Python 3.12 + pip | - | 只有想不用 Docker、本地直接跑/跑测试时才需要 |
 
 管理集群上需要已经装好：
@@ -76,14 +79,16 @@ CLUSTER_PROVISION_TIMEOUT=7200
 
 ---
 
-## 4. 放置管理集群 kubeconfig
+## 4. 放置管理集群 kubeconfig（仅 docker-compose 这条路需要）
+
+**这一步没法自动生成**——kubeconfig 是"怎么连到一个已存在的集群"的凭证，管理集群不存在，这份文件就生成不出来。它是 eph 节点跑 `kubeadm init` 时的副产物（通常在那台机器上的 `/etc/kubernetes/admin.conf`），需要你手动从那台机器上取出来。如果这一步让你觉得别扭，说明你可能更适合走 in-cluster 部署（`deploy/k8s/README.md`）——那条路完全不需要这个文件，Pod 用自己的 ServiceAccount 自动认证。
 
 ```bash
 mkdir -p deploy/kubeconfig
 cp /path/to/your/mgmt-cluster-kubeconfig deploy/kubeconfig/config
 ```
 
-**这个文件不要提交到 git**（项目根目录建议加 `.gitignore` 忽略 `deploy/kubeconfig/config` 和 `.env`，仓库里目前没有强制加是因为不同团队 git 习惯不同，请自行加上）。
+这个文件不会被提交到 git（`.gitignore` 里已经排除了 `deploy/kubeconfig/config`）。
 
 验证这份 kubeconfig 至少有权限：
 - 读写 `metal3.io/v1alpha1` 的 `baremetalhosts`（及其所在 namespace 的 `secrets`）
@@ -247,6 +252,6 @@ docker compose down -v   # -v 会连数据卷一起删，postgres 数据也没�
 
 - 数据库迁移：目前 `init_db()` 用的是 SQLAlchemy 的 `create_all()`，够开发用；生产环境建议接入 Alembic（`requirements.txt` 里已经有这个包）做版本化迁移。
 - 密钥管理：`.env` 里的 `SECRET_KEY`、`ADMIN_PASSWORD`，生产环境应该走 Vault / Kubernetes Secret / SOPS，不是明文 `.env` 文件。`SECRET_KEY` 换掉之后，之前签发的所有 token 会立刻失效（相当于全员强制重新登录），这是预期行为。
-- 把 `api`/`worker` 部署进 K8s 而不是 docker-compose 的话，`MGMT_KUBECONFIG_PATH` 换成挂载一个 `Secret`（或者干脆用 in-cluster ServiceAccount + RBAC，如果这个后端本身也跑在管理集群里的话，`services/kubernetes.py` 已经支持 `load_incluster_config()` 这条路径）。
+- 把 `api`/`worker` 部署进管理集群内部而不是 docker-compose 的话，直接用 `deploy/k8s/`——里面有完整的 Deployment/Service/RBAC/ConfigMap/Secret 清单和一份说明（`deploy/k8s/README.md`），RBAC 是照着代码实际会调用哪些 API group/kind 精确对出来的，不是拍脑袋给的 `cluster-admin`。
 - 现在这套鉴权是"先能用"的最简版本：一张 `users` 表 + bcrypt 密码 + JWT，没有 SSO、没有 MFA、没有账号锁定策略、没有密码复杂度校验。真正接入生产环境前应该换成真实身份源——既然你们现有系统里已经有 Dex+LDAP，最省事的路大概率是把 `services/auth.py`/`api/auth.py` 换成 OIDC 对接 Dex，而不是继续维护这套独立账号体系。前端的 `lib/auth.tsx`/token 校验机制不用大改，因为无论 token 从哪发的，走的都是同一套 JWT bearer 流程。
 - 如果前端要单独部署（不通过 docker-compose 的 nginx 反代），构建时设置 `VITE_API_BASE_URL` 指向后端的真实地址，并且给后端 `CORS_ORIGINS` 加上前端的域名。

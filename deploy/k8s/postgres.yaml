@@ -1,0 +1,66 @@
+# OPTIONAL, dev/test-grade fallback if you don't already have a managed
+# Postgres reachable from the management cluster. Single replica, no HA,
+# no backups -- for real use, point DATABASE_URL (in secret.yaml) at a
+# real managed instance instead and skip this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: metal3
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # avoid two pods fighting over the same PVC
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: metal3
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: metal3-deploy-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: metal3_deploy
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: metal3
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: metal3
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

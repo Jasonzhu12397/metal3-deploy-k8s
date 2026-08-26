@@ -1,0 +1,70 @@
+# Scoped to exactly what backend/app/services/{kubernetes,metal3,capi,bmc}.py
+# actually call -- cross-checked against every apiVersion/kind emitted by
+# templates/**/*.j2 (see the grep in the PR/commit that added this) rather
+# than granted as a blanket cluster-admin/edit ClusterRole. If you add a
+# new infrastructure provider template later, add its group here too, or
+# you'll get 403s that look like a code bug but are actually just RBAC.
+#
+# Deliberately a namespaced Role (not ClusterRole): every object this app
+# creates -- BareMetalHost, Cluster, Secret, etc. -- lives in CAPI_NAMESPACE
+# (default "metal3"), and Cluster API's own objects are namespaced too.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: metal3-deploy-backend
+  namespace: metal3
+rules:
+  # BMC credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch"]
+
+  # baremetal-operator
+  - apiGroups: ["metal3.io"]
+    resources: ["baremetalhosts"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+  # Cluster API core
+  - apiGroups: ["cluster.x-k8s.io"]
+    resources: ["clusters", "machinedeployments"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["cluster.x-k8s.io"]
+    resources: ["machines"]
+    verbs: ["get", "list"] # read-only: GET /machines just proxies CAPI's own Machine objects
+
+  - apiGroups: ["controlplane.cluster.x-k8s.io"]
+    resources: ["kubeadmcontrolplanes"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+  - apiGroups: ["bootstrap.cluster.x-k8s.io"]
+    resources: ["kubeadmconfigtemplates"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+  # Infrastructure providers -- Metal3 (bare metal) + the optional
+  # OpenStack/vSphere/KubeVirt cloud providers. Drop whichever of the
+  # latter three you don't actually use.
+  - apiGroups: ["infrastructure.cluster.x-k8s.io"]
+    resources:
+      - metal3clusters
+      - metal3machinetemplates
+      - openstackclusters
+      - openstackmachinetemplates
+      - vsphereclusters
+      - vspheremachinetemplates
+      - kubevirtclusters
+      - kubevirtmachinetemplates
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metal3-deploy-backend
+  namespace: metal3
+subjects:
+  - kind: ServiceAccount
+    name: metal3-deploy-backend
+    namespace: metal3
+roleRef:
+  kind: Role
+  name: metal3-deploy-backend
+  apiGroup: rbac.authorization.k8s.io

@@ -1,6 +1,7 @@
 # secrets -- never commit these
 .env
 deploy/kubeconfig/config
+deploy/k8s/secret.yaml
 
 # python
 __pycache__/
