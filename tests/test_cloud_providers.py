@@ -181,3 +181,55 @@ def test_each_cloud_provider_generates_and_deploys_end_to_end():
             assert r.json()["phase"] == DeploymentPhase.COMPLETE.value, (
                 f"{provider} deployment did not reach complete: {r.json()}"
             )
+
+
+def test_real_start_deployment_spec_renders_without_leaking_none_into_yaml():
+    """
+    The end-to-end test above builds its own cluster_spec by hand for the
+    `_run_deployment` call, which happens to omit `reserved_cpus`/
+    `hugepage_type` entirely from its worker pool dicts. That masked a real
+    bug: the *actual* spec `start_deployment` builds comes from
+    `WorkerPoolSpec.model_dump()`, which always includes every field --
+    `reserved_cpus`/`hugepage_type` come through as `None` (not absent) for
+    a cloud pool, since those are metal3-only concepts. All four CAPI
+    templates checked `{% if pool.reserved_cpus is defined %}`, and under
+    Jinja, a key that's present with value `None` still counts as
+    "defined" -- so this rendered the literal string `reserved-cpus:
+    "None"` as a kubelet arg, which would fail to start on real
+    infrastructure. This test captures the *real* spec `start_deployment`
+    builds (not a hand-rolled stand-in) and renders it for real.
+    """
+    asyncio.run(_reset_admin())
+    with patch("app.services.kubernetes.KubernetesService._ensure_loaded", return_value=None):
+        with TestClient(app) as client:
+            headers = _login_headers(client)
+            r = client.post(
+                "/api/v1/clusters",
+                json={
+                    "name": "openstack-real-spec-cluster",
+                    "infrastructure_provider": "openstack",
+                    "control_plane_count": 3,
+                    "control_plane_endpoint": "10.0.0.100",
+                    "control_plane_flavor": "m1.large",
+                    "control_plane_image": "ubuntu-22.04",
+                    "worker_pools": [
+                        {"name": "pool1", "count": 2, "flavor": "m1.xlarge", "image": "ubuntu-22.04"}
+                    ],
+                    "spec": {"openstack": {"cloud_name": "mycloud", "external_network_id": "ext-1"}},
+                },
+                headers=headers,
+            )
+            assert r.status_code == 201, r.text
+            cluster_id = r.json()["id"]
+
+            with patch("app.api.deployments.run_deployment_task") as mock_task:
+                mock_task.delay.return_value.id = "fake-id"
+                r = client.post("/api/v1/deployments", json={"cluster_id": cluster_id}, headers=headers)
+                assert r.status_code == 201, r.text
+                real_cluster_spec = mock_task.delay.call_args[0][1]
+
+    from app.services.yaml_generator import YamlGeneratorService
+
+    yaml_out = YamlGeneratorService().render_cluster_config(real_cluster_spec)
+    offending = [line for line in yaml_out.splitlines() if '"None"' in line or ": None" in line]
+    assert not offending, f"literal None leaked into rendered YAML: {offending}"

@@ -126,7 +126,7 @@ spec:
 {% if pool.node_labels %}
             node-labels: "{{ pool.node_labels | join(',') }}"
 {% endif %}
-{% if pool.reserved_cpus is defined %}
+{% if pool.reserved_cpus is defined and pool.reserved_cpus %}
             reserved-cpus: "{{ pool.reserved_cpus }}"
 {% endif %}
 ---

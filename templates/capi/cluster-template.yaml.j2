@@ -123,7 +123,7 @@ spec:
 {% if pool.node_labels %}
             node-labels: "{{ pool.node_labels | join(',') }}"
 {% endif %}
-{% if pool.reserved_cpus is defined %}
+{% if pool.reserved_cpus is defined and pool.reserved_cpus %}
             reserved-cpus: "{{ pool.reserved_cpus }}"
             cpu-manager-policy: "{{ pool.cpu_manager_policy | default('static') }}"
             topology-manager-policy: "{{ pool.topology_manager_policy | default('single-numa-node') }}"

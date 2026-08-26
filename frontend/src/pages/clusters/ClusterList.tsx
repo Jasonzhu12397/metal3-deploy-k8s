@@ -237,6 +237,12 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
               pools={form.worker_pools ?? []}
               onChange={(pools) => setForm({ ...form, worker_pools: pools })}
             />
+
+            <ProviderConfigFields
+              provider={form.infrastructure_provider as "openstack" | "vsphere" | "kubevirt"}
+              spec={form.spec ?? {}}
+              onChange={(spec) => setForm({ ...form, spec })}
+            />
           </>
         )}
 
@@ -271,6 +277,111 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+function ProviderConfigFields({
+  provider,
+  spec,
+  onChange,
+}: {
+  provider: "openstack" | "vsphere" | "kubevirt";
+  spec: Record<string, unknown>;
+  onChange: (spec: Record<string, unknown>) => void;
+}) {
+  // Every field the CAPO/CAPV/CAPK templates read off `cluster.<provider>.*`
+  // falls back to `default('')` rather than crashing when missing -- which
+  // is exactly why this form existed without them for a while and nobody
+  // noticed: an OpenStack/vSphere cluster created without these silently
+  // renders manifests with an empty cloudName/server/datacenter instead of
+  // erroring, which only fails once it's actually applied against real
+  // infrastructure. Collecting them here isn't optional polish.
+  const providerSpec = (spec[provider] as Record<string, string>) ?? {};
+  const setField = (key: string, value: string) =>
+    onChange({ ...spec, [provider]: { ...providerSpec, [key]: value } });
+
+  if (provider === "openstack") {
+    return (
+      <div className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+        <div>
+          <label className="label">Cloud 名称（clouds.yaml）</label>
+          <input
+            className="input"
+            required
+            placeholder="mycloud"
+            value={providerSpec.cloud_name ?? ""}
+            onChange={(e) => setField("cloud_name", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label">外部网络 ID</label>
+          <input
+            className="input mono"
+            placeholder="ext-net-uuid"
+            value={providerSpec.external_network_id ?? ""}
+            onChange={(e) => setField("external_network_id", e.target.value)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (provider === "vsphere") {
+    return (
+      <div className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+        <div>
+          <label className="label">vCenter Server</label>
+          <input
+            className="input"
+            required
+            placeholder="vcenter.local"
+            value={providerSpec.server ?? ""}
+            onChange={(e) => setField("server", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label">Datacenter</label>
+          <input
+            className="input"
+            required
+            value={providerSpec.datacenter ?? ""}
+            onChange={(e) => setField("datacenter", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label">Datastore</label>
+          <input
+            className="input"
+            required
+            value={providerSpec.datastore ?? ""}
+            onChange={(e) => setField("datastore", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label">Network</label>
+          <input
+            className="input"
+            required
+            value={providerSpec.network ?? ""}
+            onChange={(e) => setField("network", e.target.value)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // kubevirt
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+      <label className="label">StorageClass（给节点的 DataVolume 用）</label>
+      <input
+        className="input"
+        required
+        placeholder="rook-ceph-block"
+        value={providerSpec.storage_class_name ?? ""}
+        onChange={(e) => setField("storage_class_name", e.target.value)}
+      />
+    </div>
   );
 }
 
