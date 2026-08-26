@@ -2,7 +2,17 @@
 
 在 `INSTALL.md` 把服务跑起来之后，这份手册讲怎么用。所有例子都是实打实能跑的 `curl`，字段名跟代码里的 Pydantic schema 一一对应（`backend/app/schemas/`）。也可以直接打开 `http://localhost:8000/docs` 用 Swagger UI 点着试，效果一样。
 
-**现在也有网页控制台了**（`http://localhost:8080`，见 `frontend/`）：新建集群、注册主机、把硬件拖进节点池并拖动滑块设置 CPU 预留（带实时核心分配预览图）、发起部署看实时进度，这些都能直接点。下面这份手册仍然按 API 调用顺序写，一是给还没做完的操作（比如批量导入）留参考，二是方便你们接自动化脚本；控制台背后调的就是这些接口，字段一一对应。
+**现在所有接口（除了 `/healthz`、`/readyz`、`/auth/login`）都要带 token 了。** 先登录拿 token：
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "你的密码"}' | jq -r .access_token)
+```
+
+下面所有 `curl` 例子都要加上 `-H "Authorization: Bearer $TOKEN"`，为了不让每条命令都写一遍，后面就省略了——记得自己加上，不然全都是 `401`。token 默认 1 小时过期（`ACCESS_TOKEN_EXPIRE_MINUTES`），过期了重新登录一次就行。
+
+**现在也有网页控制台了**（`http://localhost:8080`，见 `frontend/`）：登录后，新建集群、注册主机、把硬件拖进节点池并拖动滑块设置 CPU 预留（带实时核心分配预览图）、发起部署看实时进度，这些都能直接点。下面这份手册仍然按 API 调用顺序写，一是给还没做完的操作（比如批量导入）留参考，二是方便你们接自动化脚本；控制台背后调的就是这些接口，字段一一对应。
 
 下面按真实操作顺序走一遍完整流程：**建集群 → 注册物理机 → 从 Ironic 同步硬件信息 → 把硬件分配到 pool（含 CPU 预留）→ 生成三份 YAML → 触发部署 → 看进度**。
 
@@ -435,6 +445,8 @@ curl -s -X POST http://localhost:8000/api/v1/hardware-assets \
 
 | 报错 | 原因 | 处理 |
 |---|---|---|
+| `401 Not authenticated` | 忘了带 `Authorization: Bearer <token>` | 先 `POST /auth/login` 拿 token |
+| `401 Invalid or expired token` | token 过期（默认 1 小时）或者 `SECRET_KEY` 被改过 | 重新登录一次 |
 | `409 Cluster 'xxx' already exists` | 集群名重复 | 换名字或先 `GET /clusters` 确认是不是已经建过 |
 | `404 BareMetalHost not found`（开关机时） | BMH 还没 apply 成功，或名字打错 | 先 `GET /baremetalhosts/{name}/status` 确认存在 |
 | `409 ... status.hardware yet -- inspection incomplete`（sync-from-ironic 时） | Ironic 还没跑完 inspection | 等一会再试，或去管理集群上 `kubectl describe bmh` 看 inspection 卡在哪 |

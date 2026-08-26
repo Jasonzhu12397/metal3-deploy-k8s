@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
 import { AppShell } from "./components/layout/AppShell";
+import { AuthProvider, useAuth } from "./lib/auth";
+import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import ClusterList from "./pages/clusters/ClusterList";
 import ClusterDetail from "./pages/clusters/ClusterDetail";
@@ -17,24 +20,42 @@ const queryClient = new QueryClient({
   },
 });
 
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/clusters" element={<ClusterList />} />
-            <Route path="/clusters/:id" element={<ClusterDetail />} />
-            <Route path="/hardware-assets" element={<HardwareAssetList />} />
-            <Route path="/baremetal-hosts" element={<BareMetalHostList />} />
-            <Route path="/deployments" element={<DeploymentList />} />
-            <Route path="/deployments/:id" element={<DeploymentDetail />} />
-            <Route path="/app-catalog" element={<AppCatalog />} />
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              element={
+                <RequireAuth>
+                  <AppShell />
+                </RequireAuth>
+              }
+            >
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/clusters" element={<ClusterList />} />
+              <Route path="/clusters/:id" element={<ClusterDetail />} />
+              <Route path="/hardware-assets" element={<HardwareAssetList />} />
+              <Route path="/baremetal-hosts" element={<BareMetalHostList />} />
+              <Route path="/deployments" element={<DeploymentList />} />
+              <Route path="/deployments/:id" element={<DeploymentDetail />} />
+              <Route path="/app-catalog" element={<AppCatalog />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

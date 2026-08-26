@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DeploymentProgressEvent } from "./types";
+import { getToken } from "./tokenStore";
 
 const WS_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/^http/, "ws") || "";
 
@@ -16,7 +17,11 @@ export function useDeploymentSocket(deploymentId: string | undefined) {
     setEvents([]);
 
     const base = WS_BASE || `${window.location.origin.replace(/^http/, "ws")}`;
-    const url = `${base}/api/v1/deployments/${deploymentId}/ws`;
+    // Browsers can't set an Authorization header on a WebSocket handshake,
+    // so the token travels as a query param instead -- the backend's
+    // ws_router checks it manually (see decode_token_for_websocket).
+    const token = getToken();
+    const url = `${base}/api/v1/deployments/${deploymentId}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 

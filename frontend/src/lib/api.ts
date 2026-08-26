@@ -10,6 +10,7 @@ import type {
   PoolAssignment,
   PoolAssignRequest,
 } from "./types";
+import { clearSession, getToken, UNAUTHORIZED_EVENT } from "./tokenStore";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "") + "/api/v1";
 
@@ -28,10 +29,22 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
+  if (res.status === 401) {
+    // Token missing/expired/revoked -- clear it and let every mounted
+    // <AuthProvider> know so the whole app drops back to the login
+    // screen, instead of each caller having to check for 401 itself.
+    clearSession();
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (!res.ok) {
     let body: unknown = null;
     try {
@@ -48,6 +61,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const json = (body: unknown) => JSON.stringify(body);
 
 export const api = {
+  auth: {
+    login: (username: string, password: string) =>
+      request<{ access_token: string; token_type: string; username: string }>("/auth/login", {
+        method: "POST",
+        body: json({ username, password }),
+      }),
+    me: () => request<{ username: string }>("/auth/me"),
+    changePassword: (current_password: string, new_password: string) =>
+      request<void>("/auth/change-password", {
+        method: "POST",
+        body: json({ current_password, new_password }),
+      }),
+  },
+
   clusters: {
     list: () => request<Cluster[]>("/clusters"),
     get: (id: string) => request<Cluster>(`/clusters/${id}`),

@@ -136,7 +136,24 @@ curl http://localhost:8000/readyz
 http://localhost:8080
 ```
 
-打开交互式 API 文档（前端还没覆盖到的接口，可以直接在这里点着试）：
+**第一次打开会跳到登录页。** 找管理员账号密码：
+
+```bash
+docker compose logs api | grep -A3 "Seeded initial admin account"
+```
+
+- 如果你在 `.env` 里设置了 `ADMIN_PASSWORD`，用户名是 `ADMIN_USERNAME`（默认 `admin`），密码就是你设的那个。
+- 如果没设置，服务第一次启动时会随机生成一个密码，**只在启动日志里打印一次**，不会存在任何文件里——上面这条命令就是用来找它的。登进去之后建议尽快把密码改掉——目前前端还没做"修改密码"的界面，直接调接口即可：
+  ```bash
+  curl -X POST http://localhost:8000/api/v1/auth/change-password \
+    -H "Authorization: Bearer <登录后拿到的 access_token>" \
+    -H "Content-Type: application/json" \
+    -d '{"current_password": "刚才那个随机密码", "new_password": "换成你自己的"}'
+  ```
+
+这套账号密码是先能用的最简版本（细节见 README 的「Auth」一节），后面要接你们现有的 LDAP/Dex 时，换掉 `backend/app/services/auth.py` 和 `api/auth.py` 就行，前端不用大改。
+
+打开交互式 API 文档（前端还没覆盖到的接口，可以直接在这里点着试——注意大部分接口现在需要先在 `/auth/login` 拿到 token，点右上角的 Authorize 按钮填进去）：
 
 ```
 http://localhost:8000/docs
@@ -227,7 +244,7 @@ docker compose down -v   # -v 会连数据卷一起删，postgres 数据也没�
 ## 9. 生产化建议（超出本手册范围，但值得记一下）
 
 - 数据库迁移：目前 `init_db()` 用的是 SQLAlchemy 的 `create_all()`，够开发用；生产环境建议接入 Alembic（`requirements.txt` 里已经有这个包）做版本化迁移。
-- 密钥管理：`.env` 里的 `SECRET_KEY`、以及未来接的真实 IdP 凭证，生产环境应该走 Vault / Kubernetes Secret / SOPS，不是明文 `.env` 文件。
+- 密钥管理：`.env` 里的 `SECRET_KEY`、`ADMIN_PASSWORD`，生产环境应该走 Vault / Kubernetes Secret / SOPS，不是明文 `.env` 文件。`SECRET_KEY` 换掉之后，之前签发的所有 token 会立刻失效（相当于全员强制重新登录），这是预期行为。
 - 把 `api`/`worker` 部署进 K8s 而不是 docker-compose 的话，`MGMT_KUBECONFIG_PATH` 换成挂载一个 `Secret`（或者干脆用 in-cluster ServiceAccount + RBAC，如果这个后端本身也跑在管理集群里的话，`services/kubernetes.py` 已经支持 `load_incluster_config()` 这条路径）。
-- 前端目前没有登录页 —— 因为后端 API 本身也还没接真实鉴权（`core/security.py` 里的 JWT helper 还没接到任何路由的依赖上）。真正上生产前这两件事应该一起做：先给后端路由加鉴权依赖，再给前端补登录页，不要只做一半。
+- 现在这套鉴权是"先能用"的最简版本：一张 `users` 表 + bcrypt 密码 + JWT，没有 SSO、没有 MFA、没有账号锁定策略、没有密码复杂度校验。真正接入生产环境前应该换成真实身份源——既然你们现有系统里已经有 Dex+LDAP，最省事的路大概率是把 `services/auth.py`/`api/auth.py` 换成 OIDC 对接 Dex，而不是继续维护这套独立账号体系。前端的 `lib/auth.tsx`/token 校验机制不用大改，因为无论 token 从哪发的，走的都是同一套 JWT bearer 流程。
 - 如果前端要单独部署（不通过 docker-compose 的 nginx 反代），构建时设置 `VITE_API_BASE_URL` 指向后端的真实地址，并且给后端 `CORS_ORIGINS` 加上前端的域名。

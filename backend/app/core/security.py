@@ -40,3 +40,17 @@ async def get_current_subject(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     payload = decode_token(creds.credentials)
     return payload["sub"]
+
+
+def decode_token_for_websocket(token: Optional[str]) -> Optional[str]:
+    """WebSocket handshakes can't carry a normal Authorization header from
+    a browser -- callers pass the token as a `?token=` query param instead
+    and this returns None (rather than raising) on anything invalid so the
+    caller can close the socket with a clean code instead of a 500."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        return payload.get("sub")
+    except JWTError:
+        return None

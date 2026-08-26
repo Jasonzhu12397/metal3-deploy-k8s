@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.security import decode_token_for_websocket
 from app.models.cluster import Cluster
 from app.models.deployment import Deployment
 from app.models.hardware_asset import HardwareAsset
@@ -17,6 +18,11 @@ from app.tasks.deployment_tasks import run_deployment_task
 from app.websocket.manager import manager
 
 router = APIRouter(prefix="/deployments", tags=["deployments"])
+# Separate router for the WebSocket route: it's included in main.py WITHOUT
+# the HTTP-only bearer-token dependency (HTTPBearer reads an Authorization
+# header, which browsers cannot set on a WebSocket handshake) and instead
+# checks a `?token=` query param by hand below.
+ws_router = APIRouter(prefix="/deployments", tags=["deployments"])
 planner = AssetPlannerService()
 
 
@@ -104,8 +110,17 @@ async def get_deployment(deployment_id: uuid.UUID, db: AsyncSession = Depends(ge
     return deployment
 
 
-@router.websocket("/{deployment_id}/ws")
-async def deployment_progress_ws(websocket: WebSocket, deployment_id: str):
+@ws_router.websocket("/{deployment_id}/ws")
+async def deployment_progress_ws(websocket: WebSocket, deployment_id: str, token: str | None = None):
+    # Browsers can't set an Authorization header on a WebSocket handshake,
+    # so the token travels as a query param here instead (?token=...) and
+    # is checked manually against this router, which main.py includes
+    # without the HTTP bearer dependency the rest of /deployments gets.
+    subject = decode_token_for_websocket(token)
+    if subject is None:
+        await websocket.close(code=4401)
+        return
+
     await manager.connect(deployment_id, websocket)
     try:
         while True:

@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "CHANGE_ME_IN_ENV"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # --- Seed admin account ---
+    # Created automatically on first startup if no users exist yet. If
+    # ADMIN_PASSWORD is left unset, a random one is generated and printed to
+    # the startup logs ONCE -- there is deliberately no fixed default
+    # password to look up. Set ADMIN_PASSWORD explicitly for anything beyond
+    # a throwaway local run.
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: Optional[str] = None
+
     # --- Metal3 / Kubernetes ---
     # Path to the kubeconfig for the *management* (bootstrap/ephemeral or
     # permanent CAPI management) cluster that hosts Metal3 + Cluster API.

@@ -1,6 +1,7 @@
-import { RefreshCw } from "lucide-react";
+import { LogOut, RefreshCw, User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../lib/auth";
 
 const TITLES: Record<string, string> = {
   "/": "概览",
@@ -22,6 +23,8 @@ async function pingHealth(): Promise<boolean> {
 
 export function Topbar() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { username, logout } = useAuth();
   const segment = "/" + (pathname.split("/")[1] ?? "");
   const title = TITLES[segment] ?? TITLES[pathname] ?? "详情";
 
@@ -48,6 +51,22 @@ export function Topbar() {
         >
           <RefreshCw size={14} className={isFetching ? "animate-spin" : ""} />
         </button>
+        <div className="flex items-center gap-2 border-l border-[var(--color-border)] pl-4">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink-muted)]">
+            <User size={13} /> {username}
+          </div>
+          <button
+            onClick={() => {
+              logout();
+              navigate("/login", { replace: true });
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-ink-muted)] hover:bg-[var(--color-idle-soft)]"
+            aria-label="退出登录"
+            title="退出登录"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
       </div>
     </header>
   );

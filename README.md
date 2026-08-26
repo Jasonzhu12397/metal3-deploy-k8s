@@ -147,14 +147,35 @@ Or via docker-compose (see below) at `http://localhost:8080`, reverse-proxied th
 
 Real: FastAPI app, DB models/migrations via `create_all`, k8s client wrapper,
 BMH/CAPI manifest generation and apply logic, Celery task skeleton, tests
-for manifest rendering, and a working React frontend wired to all of the
-above (verified end-to-end against a live backend, not just built).
+for manifest rendering, a working React frontend wired to all of the
+above, and username/password auth end-to-end (JWT bearer tokens, bcrypt
+password hashes, a seeded admin account, and a real login screen --
+verified against a live backend, not just built).
 
-Intentionally left as extension points (environment-specific, can't be
-guessed generically): the ephemeral node's own PXE/SDI3 bootstrap sequence,
-the addon-install step, and auth wiring to your real IdP (LDAP/Dex) --
-there's currently no login screen because nothing in the API enforces auth
-yet either; add both together.
+## Auth
+
+Deliberately minimal on purpose: one flat `users` table, bcrypt-hashed
+passwords, JWT bearer tokens (`core/security.py`), no SSO/MFA/lockout
+policies. Every route except `/healthz`, `/readyz`, and `POST /auth/login`
+requires a valid token; the frontend redirects to `/login` if it doesn't
+have one and drops back to it on any `401` from the API.
+
+The first admin account is seeded automatically on first startup (see
+`services/auth.ensure_seed_admin`) -- set `ADMIN_PASSWORD` in `.env` to
+control it, or leave it unset and read the generated password once from
+`docker compose logs api`. Change it via `POST /api/v1/auth/change-password`
+once logged in.
+
+This is explicitly a placeholder for when you actually need real SSO --
+swap `services/auth.py` + `api/auth.py` for your IdP (this platform's own
+Dex/LDAP is a natural fit, since it already exists in the addon catalog)
+when this stops being "internal test environment only". The JWT session
+mechanism (`core/security.py`, the frontend's `lib/auth.tsx`) stays the
+same either way -- only how the token gets issued changes.
+
+Intentionally still left as extension points (environment-specific, can't
+be guessed generically): the ephemeral node's own PXE/SDI3 bootstrap
+sequence, and the addon-install step.
 
 ## Tests
 
