@@ -1,0 +1,156 @@
+{# Cluster API Provider OpenStack (CAPO) target-cluster manifests.
+   NOTE: field names here match CAPO's common v1alpha7/v1beta1 shape, but
+   CAPO's CRDs do change between versions -- verify against
+   `kubectl explain openstackmachinetemplate.spec.template.spec` on your
+   actual management cluster before relying on this in production. #}
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [{{ cluster.pod_cidr | default('192.168.0.0/16') }}]
+    services:
+      cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: {{ cluster.name }}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: OpenStackCluster
+    name: {{ cluster.name }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: OpenStackCluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  identityRef:
+    name: {{ cluster.openstack.credentials_secret | default(cluster.name ~ '-openstack-credentials') }}
+    cloudName: {{ cluster.openstack.cloud_name | default('openstack') }}
+{% if cluster.openstack.external_network_id is defined %}
+  externalNetwork:
+    id: {{ cluster.openstack.external_network_id }}
+{% endif %}
+  controlPlaneEndpoint:
+    host: {{ cluster.control_plane_endpoint }}
+    port: {{ cluster.control_plane_port | default(6443) }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: OpenStackMachineTemplate
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      flavor: {{ cluster.control_plane_flavor }}
+      image:
+        filter:
+          name: {{ cluster.control_plane_image }}
+{% if cluster.openstack.ssh_key_name is defined %}
+      sshKeyName: {{ cluster.openstack.ssh_key_name }}
+{% endif %}
+{% if cluster.openstack.security_groups is defined %}
+      securityGroups:
+{% for sg in cluster.openstack.security_groups %}
+        - filter:
+            name: {{ sg }}
+{% endfor %}
+{% endif %}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  replicas: {{ cluster.control_plane_count | default(3) }}
+  version: {{ cluster.k8s_version | default('v1.29.0') }}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: OpenStackMachineTemplate
+      name: {{ cluster.name }}-control-plane
+  kubeadmConfigSpec:
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+{% if cluster.control_plane_reserved_cpus is defined %}
+          reserved-cpus: "{{ cluster.control_plane_reserved_cpus }}"
+          cpu-manager-policy: "{{ cluster.control_plane_cpu_manager_policy | default('static') }}"
+{% endif %}
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          cloud-provider: external
+{% if cluster.allow_workloads_on_control_plane | default(false) %}
+    postKubeadmCommands:
+      - "kubectl --kubeconfig /etc/kubernetes/admin.conf taint node $(hostname) node-role.kubernetes.io/control-plane- --overwrite || true"
+{% endif %}
+{% for pool in cluster.worker_pools %}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: OpenStackMachineTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      flavor: {{ pool.flavor }}
+      image:
+        filter:
+          name: {{ pool.image }}
+{% if cluster.openstack.ssh_key_name is defined %}
+      sshKeyName: {{ cluster.openstack.ssh_key_name }}
+{% endif %}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+{% if pool.node_labels %}
+            node-labels: "{{ pool.node_labels | join(',') }}"
+{% endif %}
+{% if pool.reserved_cpus is defined %}
+            reserved-cpus: "{{ pool.reserved_cpus }}"
+{% endif %}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterName: {{ cluster.name }}
+  replicas: {{ pool.count }}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: {{ cluster.name }}
+      version: {{ cluster.k8s_version | default('v1.29.0') }}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: {{ cluster.name }}-{{ pool.name }}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: OpenStackMachineTemplate
+        name: {{ cluster.name }}-{{ pool.name }}
+{% endfor %}

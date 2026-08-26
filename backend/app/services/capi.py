@@ -37,9 +37,16 @@ class CAPIService:
         self.yaml_gen = yaml_gen or YamlGeneratorService()
 
     def render_manifests(self, cluster_spec: dict[str, Any]) -> list[dict[str, Any]]:
-        """Renders Cluster / Metal3Cluster / KubeadmControlPlane /
-        Metal3MachineTemplate / MachineDeployment objects from the cluster
-        spec and returns them as parsed dicts, ready to apply."""
+        """Renders Cluster / <Provider>Cluster / KubeadmControlPlane /
+        <Provider>MachineTemplate / MachineDeployment objects from the
+        cluster spec and returns them as parsed dicts, ready to apply.
+        Which concrete provider Kinds come out is entirely decided by
+        cluster_spec["infrastructure_provider"] inside
+        YamlGeneratorService.render_cluster_config -- this method and
+        apply_cluster() below don't need to know or care which provider
+        it is, since _plural_for()'s naive lowercase-plus-s fallback
+        already covers Metal3/OpenStack/vSphere/KubeVirt's actual CRD
+        plurals correctly."""
         rendered_yaml = self.yaml_gen.render_cluster_config(cluster_spec)
         return self.yaml_gen.parse_multi(rendered_yaml)
 

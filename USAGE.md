@@ -36,6 +36,8 @@ WS   /deployments/{id}/ws               订阅进度
 
 ## 1. 创建集群定义
 
+**这一步先决定部署目标（`infrastructure_provider`）。** 默认是 `metal3`（裸金属，走下面第 2-5 步的硬件选择流程）。如果目标是 OpenStack/vSphere/KubeVirt，流程不一样，直接跳到本节末尾的"云 provider 建集群"，不需要走硬件资产那一套。
+
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/clusters \
   -H "Content-Type: application/json" \
@@ -58,7 +60,7 @@ curl -s -X POST http://localhost:8000/api/v1/clusters \
 CLUSTER_ID=$(curl -s -X POST http://localhost:8000/api/v1/clusters -H "Content-Type: application/json" -d '{...同上...}' | jq -r .id)
 ```
 
-> `worker_pools` 这里先不用填 —— pool 的组成是后面靠"分配硬件资产"动态长出来的，不是在建集群时一次性写死。
+> `worker_pools` 这里先不用填 —— pool 的组成是后面靠"分配硬件资产"动态长出来的，不是在建集群时一次性写死。（这条只对 `metal3` provider 成立——云 provider 见下面。）
 
 查看/更新/删除：
 
@@ -69,9 +71,46 @@ curl -s -X PATCH http://localhost:8000/api/v1/clusters/$CLUSTER_ID \
   -H "Content-Type: application/json" -d '{"control_plane_endpoint": "10.138.165.28"}'
 ```
 
+### 1.1 云 provider 建集群（OpenStack / vSphere / KubeVirt）
+
+跟 metal3 最大的区别：**没有物理硬件可选**，worker 池的 `flavor`/`image` 得在建集群的时候就直接写死，不走后面第 2-4 步。少了 `control_plane_flavor`/`control_plane_image`（或者某个 worker 池少了 `flavor`/`image`）会直接 `422`。
+
+```bash
+# OpenStack 例子
+curl -s -X POST http://localhost:8000/api/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "openstack-demo",
+    "infrastructure_provider": "openstack",
+    "control_plane_count": 3,
+    "control_plane_endpoint": "10.0.0.100",
+    "control_plane_flavor": "m1.large",
+    "control_plane_image": "ubuntu-22.04",
+    "worker_pools": [
+      {"name": "pool1", "count": 3, "flavor": "m1.xlarge", "image": "ubuntu-22.04"}
+    ],
+    "spec": {
+      "openstack": {"cloud_name": "mycloud", "external_network_id": "ext-net-uuid"}
+    }
+  }'
+```
+
+`vsphere`/`kubevirt`结构一样，`spec` 里换成对应的键：
+
+```bash
+# vSphere: spec.vsphere = {server, datacenter, datastore, network, resource_pool?, folder?, clone_mode?}
+# KubeVirt: spec.kubevirt = {storage_class_name, control_plane_service_type?}
+```
+
+建完之后直接跳到 **第 5 步生成 YAML**（会自动只渲染 `cluster_config_yaml`，`bmh_yaml`是空字符串——云 provider 没有物理机）和 **第 6 步触发部署**。第 2/3/4 步（注册 BMH、同步硬件、分配到 pool）对云 provider 集群没有意义，调用 `/pools/{pool}/assign` 会直接收到 `409`。
+
+⚠️ **老实说明一下限制**：OpenStack/vSphere/KubeVirt 这三份模板里的字段名是照 CAPO/CAPV/CAPK 常见的 CRD 结构写的，但这几个 provider 的 CRD 在不同版本间会变，这里没有真实的 OpenStack/vSphere/KubeVirt 环境能验证渲染出来的 YAML 真的能拉起一个健康集群——渲染逻辑和整条 orchestration 状态机是测过的（见 `tests/test_cloud_providers.py`），但"这些字段名对不对"这件事需要你们自己对着 `kubectl explain <kind>.spec...`（在装了对应 CAPI provider 的管理集群上）核对一遍。相比之下 metal3 那条路径是照着更接近真实的 Ironic/baremetal-operator 数据格式测过的，可信度更高。
+
 ---
 
 ## 2. 注册物理机（BareMetalHost）
+
+（本节及第 3、4 步只适用于 `metal3` provider——云 provider 请看上面 1.1 节，跳到第 5 步。）
 
 BMC 凭证只在这一次请求里出现，服务会立刻把它写成 Kubernetes Secret，自己数据库里不留底。
 
@@ -453,3 +492,5 @@ curl -s -X POST http://localhost:8000/api/v1/hardware-assets \
 | `409 Asset 'xxx' is not available`（assign 时） | 这台机器已经被分到别的集群/pool 了 | 先在原 pool 里 `DELETE` 释放，或换一台 |
 | `409 No hardware assigned to any pool yet`（generate 时） | 还没做第 4 步 | 先 `POST /pools/{pool}/assign` |
 | `422`（generate 时） | pool 里某台资产缺 `bmc_address`/`boot_mac_address`，或 CPU 拓扑没同步到 | 回去检查该资产 `GET /hardware-assets/{id}` |
+| `422`（云 provider 建集群时） | 没填 `control_plane_flavor`/`control_plane_image`，或某个 worker 池没填 `flavor`/`image` | 云 provider 没有物理硬件可选，机器规格必须在建集群时直接声明 |
+| `409 ... there's no physical hardware to assign`（云 provider 调 `/pools/{pool}/assign` 时） | 对非 metal3 集群调用了硬件分配接口 | 云 provider 的 worker 池在建集群时就定好了，改配置需要重建集群 |

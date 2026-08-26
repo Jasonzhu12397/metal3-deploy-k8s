@@ -12,6 +12,7 @@ from app.schemas.hardware_asset import (
     HardwareAssetCreate,
     HardwareAssetRead,
     HardwareAssetUpdate,
+    SyncFromIronicRequest,
 )
 from app.services.introspection import enrich_with_ironic_inventory, parse_bmh_hardware
 from app.services.metal3 import Metal3Service
@@ -98,19 +99,20 @@ async def delete_asset(asset_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 @router.post("/{asset_id}/sync-from-ironic", response_model=HardwareAssetRead)
 async def sync_from_ironic(
     asset_id: uuid.UUID,
-    ironic_inventory: dict | None = None,
+    payload: SyncFromIronicRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Pulls CPU/RAM/NIC/disk data from the matching BareMetalHost's
-    Ironic-driven `status.hardware`. Optionally pass the raw Ironic
-    introspection `inventory` dict (has PCI address + NUMA node per NIC,
-    which BMH.status.hardware alone does not) to get a fully-populated
-    asset in one call instead of having to fill in PCI addresses by hand
-    afterwards."""
+    Ironic-driven `status.hardware`. Optionally pass
+    `{"ironic_inventory": {...}}` (the raw Ironic introspection inventory
+    dict -- has PCI address + NUMA node per NIC, which BMH.status.hardware
+    alone does not) to get a fully-populated asset in one call instead of
+    having to fill in PCI addresses by hand afterwards."""
     asset = await db.get(HardwareAsset, asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
 
+    ironic_inventory = payload.ironic_inventory if payload else None
     hardware = metal3_service.get_hardware_details(asset.name)
     if not hardware:
         raise HTTPException(

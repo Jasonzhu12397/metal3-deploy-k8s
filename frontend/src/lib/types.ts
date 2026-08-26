@@ -5,11 +5,14 @@
 export type ClusterStatus =
   | "pending" | "bootstrapping" | "provisioning" | "ready" | "failed" | "deleting";
 
+export type InfrastructureProvider = "metal3" | "openstack" | "vsphere" | "kubevirt";
+
 export interface Cluster {
   id: string;
   name: string;
   namespace: string;
   status: ClusterStatus;
+  infrastructure_provider: InfrastructureProvider;
   control_plane_endpoint: string | null;
   control_plane_count: number;
   worker_pool_config: { pools?: WorkerPoolSpec[] };
@@ -21,13 +24,19 @@ export interface WorkerPoolSpec {
   count: number;
   role?: string;
   node_labels?: string[];
+  // Cloud-provider pools only (infrastructure_provider != "metal3")
+  flavor?: string;
+  image?: string;
 }
 
 export interface ClusterCreate {
   name: string;
   namespace?: string;
+  infrastructure_provider?: InfrastructureProvider;
   control_plane_count?: number;
   control_plane_endpoint?: string | null;
+  control_plane_flavor?: string;
+  control_plane_image?: string;
   worker_pools?: WorkerPoolSpec[];
   spec?: Record<string, unknown>;
 }

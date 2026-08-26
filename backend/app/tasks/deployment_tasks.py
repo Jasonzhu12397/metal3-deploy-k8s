@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 
 from celery import Celery
 
@@ -42,7 +43,15 @@ celery_app = Celery(
 
 async def _set_phase(deployment_id: str, phase: DeploymentPhase, message: str = "") -> None:
     async with AsyncSessionLocal() as session:
-        dep = await session.get(Deployment, deployment_id)
+        # deployment_id arrives as a plain str -- Celery task args have to
+        # be JSON-serializable, and uuid.UUID isn't, so api/deployments.py
+        # passes str(deployment.id). But the Deployment.id column is a real
+        # UUID type, and its bind processor (at least under SQLite, and
+        # potentially asyncpg too) expects an actual uuid.UUID instance --
+        # handing it a str blew up with "'str' object has no attribute
+        # 'hex'" on the very first phase update of every deployment, before
+        # this was ever exercised end to end.
+        dep = await session.get(Deployment, uuid.UUID(deployment_id))
         if dep is None:
             return
         dep.phase = phase
@@ -125,7 +134,7 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
     except Exception as exc:  # noqa: BLE001
         logger.exception("Deployment %s failed", deployment_id)
         async with AsyncSessionLocal() as session:
-            dep = await session.get(Deployment, deployment_id)
+            dep = await session.get(Deployment, uuid.UUID(deployment_id))
             if dep:
                 dep.phase = DeploymentPhase.FAILED
                 dep.error_message = str(exc)

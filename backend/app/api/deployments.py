@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.security import decode_token_for_websocket
-from app.models.cluster import Cluster
+from app.models.cluster import Cluster, InfrastructureProvider
 from app.models.deployment import Deployment
 from app.models.hardware_asset import HardwareAsset
 from app.models.pool_assignment import NodePoolAssignment
 from app.schemas.deployment import DeploymentCreate, DeploymentRead
 from app.services.asset_planner import AssetPlannerService
+from app.services.cloud_planner import CloudPlannerService
 from app.tasks.deployment_tasks import run_deployment_task
 from app.websocket.manager import manager
 
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/deployments", tags=["deployments"])
 # checks a `?token=` query param by hand below.
 ws_router = APIRouter(prefix="/deployments", tags=["deployments"])
 planner = AssetPlannerService()
+cloud_planner = CloudPlannerService()
 
 
 @router.get("", response_model=list[DeploymentRead])
@@ -41,57 +43,70 @@ async def start_deployment(payload: DeploymentCreate, db: AsyncSession = Depends
     if not cluster:
         raise HTTPException(404, "Cluster not found")
 
-    # Derive what to deploy from the *actual* hardware assignments
-    # (NodePoolAssignment), not the static worker_pools a cluster may have
-    # been created with. Those two used to be independent -- a cluster
-    # created with worker_pools=[] and then given hardware entirely through
-    # POST /pools/{pool}/assign would deploy nothing, or deploy stale config
-    # left over from creation time. This is also where control-plane vs.
-    # worker role gets resolved (see AssetPlannerService.generate_bundle),
-    # which is required for a single-control-plane-node deployment to work
-    # at all: without it, KubeadmControlPlane.replicas stays at whatever
-    # the cluster was created with instead of matching the one node that
-    # was actually assigned.
-    result = await db.scalars(
-        select(NodePoolAssignment).where(NodePoolAssignment.cluster_id == cluster.id)
-    )
-    assignments = result.all()
-    if not assignments:
-        raise HTTPException(
-            409, "No hardware assigned to any pool yet -- call /clusters/{id}/pools/{pool}/assign first"
+    if cluster.infrastructure_provider != InfrastructureProvider.METAL3:
+        # No physical hardware involved for a cloud/VM provider -- the
+        # cluster's own worker_pools + flavor/image config (set at
+        # creation time) is the whole story, and there's nothing to wait
+        # on before "applying_cluster" (no BMH, no Ironic inspection).
+        cluster_spec = cloud_planner.build_cluster_spec(cluster)
+    else:
+        # Derive what to deploy from the *actual* hardware assignments
+        # (NodePoolAssignment), not the static worker_pools a cluster may
+        # have been created with. Those two used to be independent -- a
+        # cluster created with worker_pools=[] and then given hardware
+        # entirely through POST /pools/{pool}/assign would deploy nothing,
+        # or deploy stale config left over from creation time. This is
+        # also where control-plane vs. worker role gets resolved (see
+        # AssetPlannerService.generate_bundle), which is required for a
+        # single-control-plane-node deployment to work at all: without
+        # it, KubeadmControlPlane.replicas stays at whatever the cluster
+        # was created with instead of matching the one node that was
+        # actually assigned.
+        result = await db.scalars(
+            select(NodePoolAssignment).where(NodePoolAssignment.cluster_id == cluster.id)
         )
+        assignments = result.all()
+        if not assignments:
+            raise HTTPException(
+                409,
+                "No hardware assigned to any pool yet -- call /clusters/{id}/pools/{pool}/assign first",
+            )
 
-    pools: dict[str, tuple[list[HardwareAsset], list[NodePoolAssignment]]] = {}
-    for assignment in assignments:
-        asset = await db.get(HardwareAsset, assignment.asset_id)
-        if not asset:
-            continue
-        pools.setdefault(assignment.pool_name, ([], []))
-        pools[assignment.pool_name][0].append(asset)
-        pools[assignment.pool_name][1].append(assignment)
+        pools: dict[str, tuple[list[HardwareAsset], list[NodePoolAssignment]]] = {}
+        for assignment in assignments:
+            asset = await db.get(HardwareAsset, assignment.asset_id)
+            if not asset:
+                continue
+            pools.setdefault(assignment.pool_name, ([], []))
+            pools[assignment.pool_name][0].append(asset)
+            pools[assignment.pool_name][1].append(assignment)
 
-    base_cluster_spec = {
-        "name": cluster.name,
-        "namespace": cluster.namespace,
-        "control_plane_count": cluster.control_plane_count,
-        "control_plane_endpoint": cluster.control_plane_endpoint,
-        **cluster.spec,
-    }
+        base_cluster_spec = {
+            "name": cluster.name,
+            "namespace": cluster.namespace,
+            "control_plane_count": cluster.control_plane_count,
+            "control_plane_endpoint": cluster.control_plane_endpoint,
+            **cluster.spec,
+        }
 
-    try:
-        bundle = planner.generate_bundle(base_cluster_spec, pools)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        try:
+            bundle = planner.generate_bundle(base_cluster_spec, pools)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
-    cluster_spec = bundle["cluster_spec"]
+        cluster_spec = bundle["cluster_spec"]
+        # Keep the cluster row's control_plane_count truthful once we
+        # actually deploy -- it may have been overridden by how much
+        # control-plane hardware ended up assigned (e.g. a single-node
+        # cluster created with the default of 3, then given exactly one
+        # control-plane asset). Cloud providers don't have this
+        # discrepancy -- their control_plane_count is authoritative from
+        # creation time since there's no hardware assignment step to
+        # override it.
+        cluster.control_plane_count = cluster_spec["control_plane_count"]
 
     deployment = Deployment(cluster_id=cluster.id)
     db.add(deployment)
-    # Keep the cluster row's control_plane_count truthful once we actually
-    # deploy -- it may have been overridden by how much control-plane
-    # hardware ended up assigned (e.g. a single-node cluster created with
-    # the default of 3, then given exactly one control-plane asset).
-    cluster.control_plane_count = cluster_spec["control_plane_count"]
     await db.commit()
     await db.refresh(deployment)
 

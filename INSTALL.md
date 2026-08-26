@@ -2,6 +2,8 @@
 
 本手册说明如何在本地/测试环境把 `metal3-deploy-k8s-backend` 跑起来。生产环境部署（比如把 API/worker 部署进 K8s 而不是 docker-compose）思路一样，只是把这里的容器换成 Deployment/StatefulSet，具体看文末"生产化建议"。
 
+这份安装手册跟你选哪个 `infrastructure_provider`（metal3/openstack/vsphere/kubevirt）无关——安装步骤是一样的，区别只在建集群之后你怎么用（见 USAGE.md）。如果要部署到 OpenStack/vSphere/KubeVirt，额外要做的是：在管理集群上先装好对应的 CAPI provider（CAPO/CAPV/CAPK）和它需要的凭证 Secret（比如 OpenStack 的 `clouds.yaml`、vCenter 的用户名密码），这些不归这个后端管——它只负责渲染引用这些 Secret 名字的 YAML，不负责创建凭证本身。
+
 ---
 
 ## 1. 前置条件

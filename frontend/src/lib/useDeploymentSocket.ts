@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DeploymentProgressEvent } from "./types";
-import { getToken } from "./tokenStore";
+import { clearSession, getToken, UNAUTHORIZED_EVENT } from "./tokenStore";
 
 const WS_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/^http/, "ws") || "";
 
@@ -26,7 +26,17 @@ export function useDeploymentSocket(deploymentId: string | undefined) {
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
+    ws.onclose = (event) => {
+      setConnected(false);
+      // 4401 is this backend's custom close code for "token missing or
+      // invalid" (see decode_token_for_websocket on the server side) --
+      // treat it the same as an HTTP 401 so the whole app drops back to
+      // the login screen instead of just silently sitting disconnected.
+      if (event.code === 4401) {
+        clearSession();
+        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+      }
+    };
     ws.onerror = () => setConnected(false);
     ws.onmessage = (msg) => {
       try {

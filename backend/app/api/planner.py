@@ -8,15 +8,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.models.cluster import Cluster
+from app.models.cluster import Cluster, InfrastructureProvider
 from app.models.hardware_asset import AssetStatus, HardwareAsset
 from app.models.pool_assignment import NodePoolAssignment
 from app.schemas.pool_assignment import ClusterManifestBundle, PoolAssignmentRead, PoolAssignRequest
 from app.services.asset_planner import AssetPlannerService
+from app.services.cloud_planner import CloudPlannerService
 from app.services.cpu_topology import compute_reserved_cpus, isolated_cpu_count
 
 router = APIRouter(prefix="/clusters/{cluster_id}", tags=["planner"])
 planner = AssetPlannerService()
+cloud_planner = CloudPlannerService()
 
 
 async def _get_cluster(cluster_id: uuid.UUID, db: AsyncSession) -> Cluster:
@@ -36,8 +38,17 @@ async def assign_assets_to_pool(
     """The core 'pick hardware in the UI' action: bind a set of
     HardwareAssets into a named pool on this cluster, with the operator's
     CPU-reservation / hugepage choices. Rejects assets that are already
-    reserved elsewhere."""
+    reserved elsewhere. Metal3-only -- cloud/VM providers (OpenStack/
+    vSphere/KubeVirt) declare their machine pools directly at cluster
+    creation time (flavor/image, no physical hardware to pick)."""
     cluster = await _get_cluster(cluster_id, db)
+    if cluster.infrastructure_provider != InfrastructureProvider.METAL3:
+        raise HTTPException(
+            409,
+            f"Cluster uses infrastructure_provider={cluster.infrastructure_provider.value} -- "
+            "there's no physical hardware to assign for a cloud/VM provider. Its worker pools "
+            "(flavor/image/count) are set on the cluster itself; see PATCH /clusters/{id}.",
+        )
 
     assets = []
     for asset_id in payload.asset_ids:
@@ -138,10 +149,26 @@ async def list_pools(cluster_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/manifests/generate", response_model=ClusterManifestBundle)
 async def generate_manifests(cluster_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """Renders bmh.yaml / cluster-config.yaml / per-node network policies
-    straight from whatever hardware has been assigned to this cluster's
-    pools -- nothing hand-typed."""
+    """Renders this cluster's Cluster API manifests -- for metal3, that
+    means bmh.yaml / cluster-config.yaml / per-node network policies
+    straight from whatever hardware has been assigned to its pools
+    (nothing hand-typed); for a cloud/VM provider (OpenStack/vSphere/
+    KubeVirt) there's no hardware to assign, so it's just the
+    cluster-config.yaml rendered from the flavor/image/count set at
+    cluster-creation time."""
     cluster = await _get_cluster(cluster_id, db)
+
+    if cluster.infrastructure_provider != InfrastructureProvider.METAL3:
+        try:
+            cluster_config_yaml = cloud_planner.generate_cluster_config_yaml(cluster)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return ClusterManifestBundle(
+            bmh_yaml="",
+            cluster_config_yaml=cluster_config_yaml,
+            network_policies={},
+            eph_net_yaml=None,
+        )
 
     result = await db.scalars(
         select(NodePoolAssignment).where(NodePoolAssignment.cluster_id == cluster_id)

@@ -24,6 +24,32 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+# Which Jinja template renders a target cluster's Cluster API manifests,
+# keyed by Cluster.infrastructure_provider. Adding a new provider means
+# adding one template file + one line here -- see
+# templates/capi/providers/*.yaml.j2 for the CAPO/CAPV/CAPK ones.
+PROVIDER_TEMPLATES = {
+    "metal3": "capi/cluster-template.yaml.j2",
+    "openstack": "capi/providers/openstack.yaml.j2",
+    "vsphere": "capi/providers/vsphere.yaml.j2",
+    "kubevirt": "capi/providers/kubevirt.yaml.j2",
+}
+
+# Every cloud provider template dot-accesses its own config sub-dict
+# (cluster.openstack.*, cluster.vsphere.*, cluster.kubevirt.*) with
+# `| default(...)` at the *leaf* level -- but under Jinja's StrictUndefined
+# (which this module uses everywhere else to catch real typos), even
+# looking up a *missing top-level key* like `cluster.openstack` raises
+# immediately, before any leaf `| default(...)` gets a chance to run. So
+# the sub-dict itself has to exist (even empty) before rendering, or every
+# provider's own optional fields would crash the whole render. See
+# CloudPlannerService.build_cluster_spec, which guarantees this.
+PROVIDER_CONFIG_KEYS = {
+    "openstack": "openstack",
+    "vsphere": "vsphere",
+    "kubevirt": "kubevirt",
+}
+
 
 def _env() -> Environment:
     templates_dir = Path(__file__).resolve().parents[3] / "templates"
@@ -51,7 +77,14 @@ class YamlGeneratorService:
 
     # ---- k8s-config.yaml -------------------------------------------
     def render_cluster_config(self, cluster_spec: dict[str, Any]) -> str:
-        tmpl = self.env.get_template("capi/cluster-template.yaml.j2")
+        provider = cluster_spec.get("infrastructure_provider", "metal3")
+        template_path = PROVIDER_TEMPLATES.get(provider)
+        if template_path is None:
+            raise ValueError(
+                f"unknown infrastructure_provider '{provider}' -- expected one of "
+                f"{sorted(PROVIDER_TEMPLATES)}"
+            )
+        tmpl = self.env.get_template(template_path)
         return tmpl.render(cluster=cluster_spec)
 
     def render_metal3_config(self, metal3_spec: dict[str, Any]) -> str:

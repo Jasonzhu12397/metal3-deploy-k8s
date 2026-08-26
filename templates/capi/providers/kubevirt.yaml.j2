@@ -1,0 +1,184 @@
+{# Cluster API Provider KubeVirt (CAPK) target-cluster manifests. Targets
+   VMs running as KubeVirt VirtualMachines inside an existing (management)
+   Kubernetes cluster that has KubeVirt installed -- see the "kubevirt"
+   addon in the catalog. This is the generic answer for "any KVM
+   substrate": KubeVirt itself is libvirt/QEMU-KVM underneath, so whatever
+   hosts the KubeVirt-enabled management cluster (bare metal or already-
+   virtualized) is where these VMs actually run.
+
+   NOTE: CAPK's CRDs (still alpha as of this writing) are the least
+   stable of the three cloud providers here -- verify field names against
+   `kubectl explain kubevirtmachinetemplate.spec.template.spec` on your
+   actual management cluster before relying on this in production. #}
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [{{ cluster.pod_cidr | default('192.168.0.0/16') }}]
+    services:
+      cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: {{ cluster.name }}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    kind: KubevirtCluster
+    name: {{ cluster.name }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtCluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  controlPlaneServiceTemplate:
+    spec:
+      type: {{ cluster.kubevirt.control_plane_service_type | default('LoadBalancer') }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      virtualMachineTemplate:
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              domain:
+                cpu:
+                  cores: {{ cluster.control_plane_num_cpus | default(4) }}
+                memory:
+                  guest: {{ cluster.control_plane_memory_mib | default(8192) }}Mi
+                devices: {}
+              volumes:
+                - name: {{ cluster.name }}-control-plane-boot
+                  dataVolume:
+                    name: {{ cluster.control_plane_image }}
+              accessCredentials: []
+          dataVolumeTemplates:
+            - metadata:
+                name: {{ cluster.name }}-control-plane-boot
+              spec:
+                storage:
+                  storageClassName: {{ cluster.kubevirt.storage_class_name | default('') }}
+                source:
+                  registry:
+                    url: {{ cluster.control_plane_image }}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  replicas: {{ cluster.control_plane_count | default(3) }}
+  version: {{ cluster.k8s_version | default('v1.29.0') }}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+      kind: KubevirtMachineTemplate
+      name: {{ cluster.name }}-control-plane
+  kubeadmConfigSpec:
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: ""
+{% if cluster.control_plane_reserved_cpus is defined %}
+          reserved-cpus: "{{ cluster.control_plane_reserved_cpus }}"
+          cpu-manager-policy: "{{ cluster.control_plane_cpu_manager_policy | default('static') }}"
+{% endif %}
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          cloud-provider: ""
+{% if cluster.allow_workloads_on_control_plane | default(false) %}
+    postKubeadmCommands:
+      - "kubectl --kubeconfig /etc/kubernetes/admin.conf taint node $(hostname) node-role.kubernetes.io/control-plane- --overwrite || true"
+{% endif %}
+{% for pool in cluster.worker_pools %}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      virtualMachineTemplate:
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              domain:
+                cpu:
+                  cores: {{ pool.num_cpus | default(4) }}
+                memory:
+                  guest: {{ pool.memory_mib | default(8192) }}Mi
+                devices: {}
+              volumes:
+                - name: {{ cluster.name }}-{{ pool.name }}-boot
+                  dataVolume:
+                    name: {{ pool.image }}
+          dataVolumeTemplates:
+            - metadata:
+                name: {{ cluster.name }}-{{ pool.name }}-boot
+              spec:
+                storage:
+                  storageClassName: {{ cluster.kubevirt.storage_class_name | default('') }}
+                source:
+                  registry:
+                    url: {{ pool.image }}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: ""
+{% if pool.node_labels %}
+            node-labels: "{{ pool.node_labels | join(',') }}"
+{% endif %}
+{% if pool.reserved_cpus is defined %}
+            reserved-cpus: "{{ pool.reserved_cpus }}"
+{% endif %}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterName: {{ cluster.name }}
+  replicas: {{ pool.count }}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: {{ cluster.name }}
+      version: {{ cluster.k8s_version | default('v1.29.0') }}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: {{ cluster.name }}-{{ pool.name }}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        kind: KubevirtMachineTemplate
+        name: {{ cluster.name }}-{{ pool.name }}
+{% endfor %}

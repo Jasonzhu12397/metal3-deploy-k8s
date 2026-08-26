@@ -24,6 +24,8 @@ export default function ClusterDetail() {
 
   if (!cluster) return <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>;
 
+  const isCloud = cluster.infrastructure_provider !== "metal3";
+
   return (
     <div className="flex flex-col gap-5">
       <div className="card flex items-center justify-between p-5">
@@ -31,6 +33,9 @@ export default function ClusterDetail() {
           <div className="flex items-center gap-2.5">
             <h2 className="text-lg font-bold">{cluster.name}</h2>
             <StatusTag status={cluster.status} />
+            <span className="rounded-full bg-[var(--color-idle-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-ink-muted)]">
+              {cluster.infrastructure_provider}
+            </span>
           </div>
           <p className="mono mt-1 text-xs text-[var(--color-ink-muted)]">
             {cluster.namespace} · {cluster.control_plane_count} 控制面 ·{" "}
@@ -55,9 +60,23 @@ export default function ClusterDetail() {
         ))}
       </div>
 
-      {tab === "pools" && <PoolsTab clusterId={id} />}
+      {tab === "pools" && (isCloud ? <CloudPoolsNotice provider={cluster.infrastructure_provider} /> : <PoolsTab clusterId={id} />)}
       {tab === "manifests" && <ManifestsTab clusterId={id} />}
       {tab === "deployments" && <DeploymentsTab clusterId={id} />}
+    </div>
+  );
+}
+
+function CloudPoolsNotice({ provider }: { provider: string }) {
+  return (
+    <div className="card p-8 text-center">
+      <p className="text-sm font-medium">{provider} 集群没有"节点池"硬件分配这一步</p>
+      <p className="mx-auto mt-2 max-w-md text-xs text-[var(--color-ink-muted)]">
+        {provider === "openstack" && "OpenStack 集群的 worker 池（名称/数量/flavor/image）是建集群时直接声明的，不需要（也没有）物理硬件可选。"}
+        {provider === "vsphere" && "vSphere 集群的 worker 池（名称/数量/flavor/VM 模板）是建集群时直接声明的，不需要（也没有）物理硬件可选。"}
+        {provider === "kubevirt" && "KubeVirt 集群的 worker 池（名称/数量/flavor/DataVolume）是建集群时直接声明的，VM 跑在装了 KubeVirt 的管理集群里，不需要单独的物理硬件。"}
+        {" "}要改 worker 池配置，目前需要重建集群；直接去"生成的清单"标签页看渲染结果，或者去"部署"标签页发起部署。
+      </p>
     </div>
   );
 }

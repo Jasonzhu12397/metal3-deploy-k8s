@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -82,3 +82,19 @@ class HardwareAssetFilter(BaseModel):
     min_memory_gb: Optional[int] = None
     nic_model_contains: Optional[str] = None
     unassigned_only: bool = False
+
+
+class SyncFromIronicRequest(BaseModel):
+    """A bare `dict | None` function parameter looks like it should bind to
+    a JSON body of `{"ironic_inventory": {...}}` the way a Pydantic model
+    field would, but FastAPI doesn't embed single non-model body params
+    under their parameter name -- it expects the raw inventory object as
+    the *entire* request body instead, with nothing wrapping it. Every
+    caller (USAGE.md's documented curl example, and the frontend's
+    api.hardwareAssets.syncFromIronic) already sends the wrapped shape, so
+    the wrapped shape is the one true contract -- this model exists so
+    FastAPI actually binds it instead of silently leaving it as `None`
+    (which the old bare-dict parameter did: no error, just quietly
+    skipping the enrichment step)."""
+
+    ironic_inventory: Optional[dict[str, Any]] = None

@@ -1,30 +1,61 @@
 # metal3-deploy-k8s-backend
 
-Automation layer on top of the upstream **[metal3-io](https://github.com/metal3-io)**
-stack (baremetal-operator + Ironic + Cluster API Provider Metal3), built to
-replace shell-script-driven deployment (`ccdadm cluster bootstrap` +
-hand-edited `bmh.yaml` / `k8s-config.yaml` / `eph-net.yaml`) with an API +
-async task pipeline. This is the **backend only** -- it's designed to be
-driven by a frontend (asset picker, pool builder, deployment dashboard)
-that doesn't exist yet.
+Automation layer on top of Cluster API, built to replace shell-script-driven
+deployment (`ccdadm cluster bootstrap` + hand-edited `bmh.yaml` /
+`k8s-config.yaml` / `eph-net.yaml`) with an API + async task pipeline, plus
+a React console (`frontend/`) driving it.
 
-What upstream project each service wraps:
+**Supports four Cluster API infrastructure providers**, selected per-cluster
+via `infrastructure_provider`:
+
+| Provider | Upstream CAPI project | What it targets |
+|---|---|---|
+| `metal3` (default) | **[metal3-io](https://github.com/metal3-io)** (baremetal-operator + Ironic + CAPM3) | bare metal, via the hardware-asset picker flow below |
+| `openstack` | Cluster API Provider OpenStack (CAPO) | VMs on an existing OpenStack cloud |
+| `vsphere` | Cluster API Provider vSphere (CAPV) | VMs on vCenter |
+| `kubevirt` | Cluster API Provider KubeVirt (CAPK) | VMs as KubeVirt VirtualMachines inside an existing (KubeVirt-enabled) management cluster -- the generic answer for "any KVM/libvirt substrate" |
+
+Only `metal3` has real physical hardware to pick (NIC PCI addresses, CPU
+topology, disk roles) -- the other three are VM-based, so their worker
+pools are just `{name, count, flavor, image}` declared directly at cluster
+creation, no asset picker involved. See `templates/capi/providers/*.yaml.j2`
+for what each one renders, and their NOTE comments for the very real
+caveat that CAPO/CAPV/CAPK's CRD fields shift between versions and this
+project has no live OpenStack/vSphere/KubeVirt cluster to validate
+against -- only the `metal3` path has been exercised against anything
+resembling real infrastructure semantics (Ironic's actual data shapes,
+etc.); the other three are verified for correct manifest structure and
+API wiring (see `tests/test_cloud_providers.py`), not verified to
+actually bring up a healthy cluster on real OpenStack/vSphere/KubeVirt.
+
+What upstream project each metal3-path service wraps:
 
 | This service | Upstream metal3-io component |
 |---|---|
 | `services/metal3.py` | **baremetal-operator** (`BareMetalHost` CRD) -- registration, power state, and reading Ironic's inspection results off `status.hardware` |
 | `services/introspection.py` | **Ironic** -- turns its inspection/introspection data into structured hardware inventory instead of the operator reading it off a dashboard |
-| `services/capi.py` | **Cluster API Provider Metal3 (CAPM3)** -- `Cluster` / `Metal3Cluster` / `KubeadmControlPlane` / `Metal3MachineTemplate` / `MachineDeployment` |
-| `services/asset_planner.py` + `cpu_topology.py` | not upstream -- this project's own layer that turns *picked hardware* into the manifests those CRDs need (NIC PCI addresses -> bond config, CPU topology -> `reserved-cpus` string, disks -> root device hints / Ceph OSD filters) |
+| `services/capi.py` | **Cluster API** generically -- `render_manifests`/`apply_cluster` don't know or care which provider they're rendering for, see `services/yaml_generator.PROVIDER_TEMPLATES` |
+| `services/asset_planner.py` + `cpu_topology.py` | not upstream -- this project's own layer that turns *picked hardware* into the manifests CAPM3 needs (NIC PCI addresses -> bond config, CPU topology -> `reserved-cpus` string, disks -> root device hints / Ceph OSD filters) |
+| `services/cloud_planner.py` | not upstream -- the equivalent layer for the three VM-based providers, much simpler since there's no physical hardware to reconcile |
 
-### Hardware-driven manifest generation (no more hand-typed YAML)
+### Hardware-driven manifest generation (metal3 provider -- no hand-typed YAML)
 
 1. A `BareMetalHost` gets created (via `POST /baremetalhosts`) and Ironic inspects it.
 2. `POST /hardware-assets/{id}/sync-from-ironic` pulls the inspected CPU/RAM/NIC/disk data off `BMH.status.hardware` into a `HardwareAsset` row. Pass Ironic's raw introspection `inventory` too if you have it (webhook/API), since `status.hardware` alone doesn't include NIC PCI address or NUMA node, and the network/CPU config genuinely needs those.
-3. In the (future) frontend, an operator picks assets from that inventory and assigns them to a cluster's pool via `POST /clusters/{id}/pools/{pool}/assign`, choosing: role (control-plane/worker), **cores reserved per socket** (this is what "CPU 预留" turns into), hugepage size/count, and NIC role overrides if the auto-detected bonding grouping is wrong.
+3. In the console (or via the API), an operator picks assets from that inventory and assigns them to a cluster's pool via `POST /clusters/{id}/pools/{pool}/assign`, choosing: role (control-plane/worker), **cores reserved per socket** (this is what "CPU 预留" turns into), hugepage size/count, and NIC role overrides if the auto-detected bonding grouping is wrong.
 4. `POST /clusters/{id}/manifests/generate` renders `bmh.yaml`, the CAPI `k8s-config.yaml`-equivalent, and per-node NIC bonding policy -- all derived from the picked hardware, with zero hand-typed PCI addresses or `reserved_cpus` strings.
 
 `reserved_cpus` is computed from the asset's real socket/core/thread topology (`services/cpu_topology.py`) using the same hyperthread-sibling-pairing convention as the existing production config -- e.g. 2 sockets × 32 cores × SMT2, reserving 4 cores/socket, reproduces `0,64,1,65,2,66,3,67,32,96,33,97,34,98,35,99` exactly (see `tests/test_asset_planner.py`).
+
+**Assigning a role="control-plane" pool with exactly one asset and no
+worker pools is a genuine single-node target cluster**: `control_plane_count`
+gets derived from the actual assignment (not whatever the cluster was
+created with), and the control-plane's `NoSchedule` taint is automatically
+dropped so the one node can run workloads too. This is the "PXE-booted
+ephemeral node bootstraps a single-node management cluster, which deploys
+the target cluster" flow -- see `tests/test_asset_planner.py`'s
+control-plane tests and `tests/test_deployment_tasks.py` for the full
+orchestration run.
 
 It also still exposes:
 
@@ -126,31 +157,47 @@ Or via docker-compose (see below) at `http://localhost:8080`, reverse-proxied th
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/v1/clusters` | Define a target cluster spec |
-| POST | `/api/v1/baremetalhosts` | Register one BMH (writes BMC creds to a k8s Secret) |
+| POST | `/api/v1/clusters` | Define a target cluster spec (set `infrastructure_provider` here: `metal3`\|`openstack`\|`vsphere`\|`kubevirt`) |
+| POST | `/api/v1/baremetalhosts` | Register one BMH (writes BMC creds to a k8s Secret) -- metal3 only |
 | POST | `/api/v1/baremetalhosts/bulk-import` | Register many hosts at once |
 | POST | `/api/v1/baremetalhosts/{name}/power?online=true` | Power on/off via Metal3 |
 | POST | `/api/v1/manifests/bmh` | Render `bmh.yaml` from JSON, without applying it |
-| POST | `/api/v1/manifests/cluster-config` | Render CAPI/Metal3 `k8s-config.yaml`-equivalent |
+| POST | `/api/v1/manifests/cluster-config` | Render CAPI `k8s-config.yaml`-equivalent for any provider |
 | POST | `/api/v1/manifests/eph-net` | Render the ephemeral node's `eph-net.yaml`-equivalent |
 | GET | `/api/v1/deployments?cluster_id=` | List deployments, optionally filtered by cluster |
-| POST | `/api/v1/deployments` | Kick off a full cluster deployment |
+| POST | `/api/v1/deployments` | Kick off a full cluster deployment (branches by provider internally) |
 | WS | `/api/v1/deployments/{id}/ws` | Live progress stream |
-| POST | `/api/v1/hardware-assets/{id}/sync-from-ironic` | Pull CPU/RAM/NIC/disk data from an inspected BMH |
-| GET | `/api/v1/hardware-assets?status=available` | Inventory for the asset picker UI |
-| PATCH | `/api/v1/hardware-assets/{id}` | Correct NIC/disk role assignment |
-| POST | `/api/v1/clusters/{id}/pools/{pool}/assign` | Assign picked hardware to a pool + set CPU reservation/hugepages |
-| GET | `/api/v1/clusters/{id}/pools` | Current pool composition + computed `reserved_cpus` per asset |
-| POST | `/api/v1/clusters/{id}/manifests/generate` | Render bmh.yaml/cluster-config/network-policies from assigned hardware |
+| POST | `/api/v1/hardware-assets/{id}/sync-from-ironic` | Pull CPU/RAM/NIC/disk data from an inspected BMH -- metal3 only |
+| GET | `/api/v1/hardware-assets?status=available` | Inventory for the asset picker UI -- metal3 only |
+| PATCH | `/api/v1/hardware-assets/{id}` | Correct NIC/disk role assignment -- metal3 only |
+| POST | `/api/v1/clusters/{id}/pools/{pool}/assign` | Assign picked hardware to a pool + set CPU reservation/hugepages -- metal3 only, `409`s for other providers |
+| GET | `/api/v1/clusters/{id}/pools` | Current pool composition + computed `reserved_cpus` per asset -- metal3 only |
+| POST | `/api/v1/clusters/{id}/manifests/generate` | Render manifests: bmh.yaml/cluster-config/network-policies from assigned hardware (metal3), or just cluster-config from declared flavor/image (other providers) |
+| GET | `/api/v1/addons/catalog` | Full addon catalog (calico, kube-ovn, ceph, kubevirt, apigateway, ...) |
+| POST/DELETE | `/api/v1/clusters/{id}/addons/{name}/enable`\|`disable` | Toggle an addon for a cluster |
 
 ## What's stubbed vs. real
 
 Real: FastAPI app, DB models/migrations via `create_all`, k8s client wrapper,
-BMH/CAPI manifest generation and apply logic, Celery task skeleton, tests
-for manifest rendering, a working React frontend wired to all of the
-above, and username/password auth end-to-end (JWT bearer tokens, bcrypt
-password hashes, a seeded admin account, and a real login screen --
-verified against a live backend, not just built).
+BMH/CAPI manifest generation and apply logic (all four providers), Celery
+task skeleton, tests for manifest rendering, a working React frontend
+wired to all of the above, and username/password auth end-to-end (JWT
+bearer tokens, bcrypt password hashes, a seeded admin account, and a real
+login screen -- verified against a live backend, not just built).
+
+**Verified vs. structurally-present-but-unvalidated, honestly:** the
+`metal3` provider's manifest generation and orchestration state machine
+have been run end-to-end repeatedly against realistic mocked K8s/Ironic
+responses, including the single-node control-plane case. The `openstack`/
+`vsphere`/`kubevirt` providers are verified the same way for API
+contract + orchestration state machine + manifest *structure* (right
+Kinds, right replica counts, `tests/test_cloud_providers.py`), but there's
+no real OpenStack/vSphere/KubeVirt cluster in this environment to confirm
+the manifests actually bring up a healthy cluster -- CAPO/CAPV/CAPK's
+exact CRD field names shift between provider versions, so treat those
+three templates as a correct starting skeleton to validate against
+`kubectl explain <kind>.spec...` on your actual management cluster, not
+as pre-verified production output the way the metal3 path is.
 
 ## Auth
 

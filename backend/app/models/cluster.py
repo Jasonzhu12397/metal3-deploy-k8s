@@ -15,6 +15,34 @@ class ClusterStatus(str, enum.Enum):
     DELETING = "deleting"
 
 
+class InfrastructureProvider(str, enum.Enum):
+    """Which Cluster API infrastructure provider actually stands up the
+    target cluster's nodes. Drives which Jinja template renders the
+    Cluster/*Cluster/*MachineTemplate objects (see
+    services/yaml_generator.py's PROVIDER_TEMPLATES) and whether the
+    hardware-asset picker flow applies at all.
+
+    METAL3: bare metal via baremetal-operator/Ironic -- the only provider
+        with real physical HardwareAsset picking, CPU reservation, NIC
+        bonding, all of it. Everything this project was originally built
+        around.
+    OPENSTACK: Cluster API Provider OpenStack (CAPO) -- VMs on an existing
+        OpenStack cloud.
+    VSPHERE: Cluster API Provider vSphere (CAPV) -- VMs on vCenter.
+    KUBEVIRT: Cluster API Provider KubeVirt (CAPK) -- VMs running as
+        KubeVirt VirtualMachines inside an existing (management) K8s
+        cluster. This is the generic answer to "other KVM interfaces":
+        KubeVirt itself runs on top of libvirt/QEMU-KVM, so anything that
+        can host a KubeVirt-enabled cluster (bare metal or virtualized)
+        works as the substrate.
+    """
+
+    METAL3 = "metal3"
+    OPENSTACK = "openstack"
+    VSPHERE = "vsphere"
+    KUBEVIRT = "kubevirt"
+
+
 class Cluster(TimestampedModel):
     """A target (production) Kubernetes cluster deployed via Cluster API."""
 
@@ -25,10 +53,18 @@ class Cluster(TimestampedModel):
     status: Mapped[ClusterStatus] = mapped_column(
         Enum(ClusterStatus), default=ClusterStatus.PENDING
     )
+    infrastructure_provider: Mapped[InfrastructureProvider] = mapped_column(
+        Enum(InfrastructureProvider), default=InfrastructureProvider.METAL3
+    )
     control_plane_endpoint: Mapped[str | None] = mapped_column(String(255), nullable=True)
     control_plane_count: Mapped[int] = mapped_column(default=3)
     worker_pool_config: Mapped[dict] = mapped_column(JSON, default=dict)
     # Free-form spec derived from the uploaded ccdadm-style config
     # (infra/networks/iaas/kubernetes sections). Never store raw secrets
-    # here -- reference a secret name/path instead.
+    # here -- reference a secret name/path instead. Also where
+    # provider-specific cloud config lives for non-metal3 clusters (e.g.
+    # spec["openstack"] = {cloud_name, external_network_id, ...},
+    # spec["vsphere"] = {server, datacenter, datastore, network, ...},
+    # spec["kubevirt"] = {storage_class_name, namespace}) and where
+    # control_plane_flavor/control_plane_image live for cloud providers.
     spec: Mapped[dict] = mapped_column(JSON, default=dict)
