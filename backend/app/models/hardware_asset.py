@@ -74,6 +74,19 @@ class HardwareAsset(TimestampedModel):
     bmc_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     boot_mac_address: Mapped[str | None] = mapped_column(String(17), nullable=True)
 
+    # BMC credentials, encrypted at rest (see services/crypto.py) -- NOT
+    # the username/password in plaintext, and never exposed via any read
+    # schema (HardwareAssetRead only ever surfaces a `has_bmc_credentials`
+    # boolean, computed from whether this column is populated). Storing
+    # these lets an operator re-create a deleted/rotated Kubernetes Secret
+    # without re-typing the password; it does NOT replace that Secret --
+    # baremetal-operator still reads credentials from there, not from
+    # this database. This column exists so THIS app can recreate that
+    # Secret on demand, not so it becomes a second live copy Ironic
+    # depends on.
+    bmc_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    encrypted_bmc_password: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     node_pool_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     cluster_id: Mapped[UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("clusters.id", ondelete="SET NULL"), nullable=True
@@ -86,3 +99,7 @@ class HardwareAsset(TimestampedModel):
     @property
     def total_logical_cpus(self) -> int:
         return self.total_physical_cores * self.cpu_threads_per_core
+
+    @property
+    def has_bmc_credentials(self) -> bool:
+        return self.encrypted_bmc_password is not None

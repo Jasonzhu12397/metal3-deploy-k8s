@@ -95,6 +95,10 @@ export interface HardwareAsset {
   nics: NicSpec[];
   disks: DiskSpec[];
   bmc_address: string | null;
+  bmc_username: string | null;
+  // Deliberately a boolean -- the API never returns the password itself,
+  // encrypted or plain. See README's "BMC credential storage" section.
+  has_bmc_credentials: boolean;
   boot_mac_address: string | null;
   node_pool_name: string | null;
   cluster_id: string | null;

@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, X } from "lucide-react";
+import { Check, KeyRound, RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import { CoreMap } from "../../components/ui/CoreMap";
 import { StatusTag } from "../../components/ui/StatusTag";
-import type { DiskRole, DiskSpec, NicRole, NicSpec } from "../../lib/types";
+import type { DiskRole, DiskSpec, HardwareAsset, NicRole, NicSpec } from "../../lib/types";
 
 const NIC_ROLES: NicRole[] = ["control", "data", "storage", "sriov", "unassigned"];
 const DISK_ROLES: DiskRole[] = ["os", "ceph_osd", "ceph_journal", "local_storage", "unassigned"];
@@ -183,10 +183,7 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
             )}
           </section>
 
-          <section className="grid grid-cols-2 gap-2 text-xs">
-            <Field label="BMC 地址" value={asset.bmc_address ?? "—"} mono />
-            <Field label="Boot MAC" value={asset.boot_mac_address ?? "—"} mono />
-          </section>
+          <BmcCredentialsSection asset={asset} assetId={assetId} />
         </div>
 
         <div className="sticky bottom-0 mt-auto flex justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-3.5">
@@ -203,6 +200,136 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
         </div>
       </div>
     </div>
+  );
+}
+
+function BmcCredentialsSection({ asset, assetId }: { asset: HardwareAsset; assetId: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [username, setUsername] = useState(asset.bmc_username ?? "");
+  const [password, setPassword] = useState("");
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["hardware-asset", assetId] });
+    qc.invalidateQueries({ queryKey: ["hardware-assets"] });
+  };
+
+  const setCredsMutation = useMutation({
+    mutationFn: () => api.hardwareAssets.setBmcCredentials(assetId, username, password),
+    onSuccess: () => {
+      setPassword("");
+      setEditing(false);
+      invalidate();
+    },
+  });
+
+  const resyncMutation = useMutation({
+    mutationFn: () => api.hardwareAssets.resyncBmcSecret(assetId),
+  });
+
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
+          BMC 凭证
+        </h4>
+        {asset.has_bmc_credentials && !editing && (
+          <button
+            className="btn btn-secondary !py-1 !text-[11px]"
+            onClick={() => resyncMutation.mutate()}
+            disabled={resyncMutation.isPending}
+            title="从加密存储解密，重新写一份 Kubernetes Secret"
+          >
+            <RefreshCw size={12} className={resyncMutation.isPending ? "animate-spin" : ""} />
+            重建 Secret
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <Field label="BMC 地址" value={asset.bmc_address ?? "—"} mono />
+        <Field label="Boot MAC" value={asset.boot_mac_address ?? "—"} mono />
+      </div>
+
+      <div className="mt-2 flex items-center justify-between rounded-lg bg-[var(--color-bg)] px-2.5 py-2">
+        <div className="flex items-center gap-2">
+          <KeyRound size={13} className="text-[var(--color-ink-faint)]" />
+          {asset.has_bmc_credentials ? (
+            <span className="flex items-center gap-1 text-xs">
+              <Check size={12} className="text-[var(--color-success)]" />
+              已加密存储 · 用户名 <span className="mono font-medium">{asset.bmc_username}</span>
+            </span>
+          ) : (
+            <span className="text-xs text-[var(--color-ink-faint)]">未存储凭证</span>
+          )}
+        </div>
+        {!editing && (
+          <button className="btn-ghost btn !py-1 !text-[11px]" onClick={() => setEditing(true)}>
+            {asset.has_bmc_credentials ? "更新" : "设置"}
+          </button>
+        )}
+      </div>
+
+      {resyncMutation.isSuccess && (
+        <p className="mt-1.5 text-[11px] text-[var(--color-success)]">
+          已重新写入 Secret：{resyncMutation.data.secret_name}
+        </p>
+      )}
+      {resyncMutation.isError && (
+        <p className="mt-1.5 text-[11px] text-[var(--color-danger)]">
+          {(resyncMutation.error as ApiError).message}
+        </p>
+      )}
+
+      {editing && (
+        <form
+          className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setCredsMutation.mutate();
+          }}
+        >
+          <div>
+            <label className="label">用户名</label>
+            <input className="input" required value={username} onChange={(e) => setUsername(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">密码</label>
+            <input
+              className="input"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={asset.has_bmc_credentials ? "输入新密码以更新" : ""}
+            />
+          </div>
+          <p className="text-[11px] text-[var(--color-ink-faint)]">
+            提交后立刻加密存库并重写 Kubernetes Secret；密码本身不会再被任何接口返回。
+          </p>
+          {setCredsMutation.isError && (
+            <p className="text-[11px] text-[var(--color-danger)]">
+              {(setCredsMutation.error as ApiError).message}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary !py-1 !text-[11px]"
+              onClick={() => {
+                setEditing(false);
+                setPassword("");
+              }}
+            >
+              取消
+            </button>
+            <button type="submit" className="btn btn-primary !py-1 !text-[11px]" disabled={setCredsMutation.isPending}>
+              {setCredsMutation.isPending ? "保存中..." : "保存"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 

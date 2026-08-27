@@ -112,7 +112,7 @@ curl -s -X POST http://localhost:8000/api/v1/clusters \
 
 （本节及第 3、4 步只适用于 `metal3` provider——云 provider 请看上面 1.1 节，跳到第 5 步。）
 
-BMC 凭证只在这一次请求里出现，服务会立刻把它写成 Kubernetes Secret，自己数据库里不留底。
+这次请求里的 BMC 凭证会立刻写成 Kubernetes Secret（Metal3 真正读密码的地方），同时**加密后**存进这个服务自己的数据库（需要提前在 `.env` 设置 `BMC_ENCRYPTION_KEY`，见 INSTALL.md）——这样以后要重建被误删的 Secret，不用再让人把密码重新输一遍。加密用的是 Fernet 对称加密，不是明文也不是 base64；接口永远不会把密码（不管是明文还是密文）返回给调用方，`GET /hardware-assets` 只会告诉你 `has_bmc_credentials: true/false`。
 
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/baremetalhosts \
@@ -246,6 +246,28 @@ curl -s "http://localhost:8000/api/v1/hardware-assets?min_memory_gb=128"
 ```
 
 对每台物理机重复第 2-3 步（注册 BMH → 建资产壳子 → 同步 → 修角色），把整个机房的库存都建起来。
+
+### 3.3 BMC 凭证：手动设置 / 重建 Secret
+
+大多数情况下不需要手动管这块——第 2 步注册 BMH 的时候凭证已经自动加密存好了。这两个接口是给补录/修复用的：
+
+**手动给一个已存在的资产设置/更新 BMC 凭证**（比如这台资产不是通过 `POST /baremetalhosts` 注册的，是走"手动登记硬件"那条路建的）：
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/hardware-assets/$ASSET_ID/bmc-credentials \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "真实密码"}'
+```
+
+这个接口会同时做两件事：加密存进数据库、立刻写一份 Kubernetes Secret（跟注册 BMH 时的行为一致，两条路径不会存出两份不一样的密码）。
+
+**重建 Kubernetes Secret**（Secret 被误删、namespace 重建过、或者你就是不确定现在是不是同步的）：
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/hardware-assets/$ASSET_ID/resync-bmc-secret
+```
+
+这个接口从数据库解密出密码，重新写一次 Secret，**响应里不会包含密码本身**——只会确认"写成功了"。如果报 `409`，说明这个资产本来就没存过凭证（比如注册的时候还没设 `BMC_ENCRYPTION_KEY`）；报 `500` 且提示解密失败，通常是密钥被换掉了但数据库里的密文还是旧密钥加密的（换密钥的正确流程见 README 的"BMC credential storage"一节，别直接把 `BMC_ENCRYPTION_KEY` 硬改，那样之前存的密码全部读不出来）。
 
 ---
 

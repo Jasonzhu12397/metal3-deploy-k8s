@@ -75,7 +75,16 @@ BMH_READY_TIMEOUT=1800
 CLUSTER_PROVISION_TIMEOUT=7200
 ```
 
-> ⚠️ **不要**把 BMC 密码、SSH 私钥、集群 CA 私钥、LDAP 密码这类东西写进 `.env`。这个项目的设计是：BMC 凭证只经过 API 一次，立刻写成 Kubernetes Secret，不落到本项目自己的数据库或配置文件里。`.env` 只放这个服务自己的配置。
+> ⚠️ **不要**把 SSH 私钥、集群 CA 私钥、LDAP 密码这类东西写进 `.env`——这些不归这个项目管，`.env` 只放这个服务自己的配置。
+>
+> **BMC 密码是个例外，现在会加密存进这个服务自己的数据库**（不是明文，也不是 base64——base64 不是加密，任何人拿到密文一行代码就能还原，等于没锁；这里用的是 Fernet 对称加密，需要单独管理的密钥才能解密），这样注册过一次的物理机，之后要重建被删掉的 Kubernetes Secret 时不用再重新输一遍密码。加密密钥必须单独设置：
+
+```bash
+# 生成一个密钥（只需要生成一次，之后所有物理机的 BMC 密码都用这一把密钥加密）
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+把生成的值填进 `.env` 的 `BMC_ENCRYPTION_KEY`。**这把密钥本身才是真正敏感的东西**——它不能跟它加密出来的数据存在一起，丢了这把密钥，之前存的所有 BMC 密码就永久解不出来了（没有后门，这是设计上的），生产环境应该用 Vault/K8s Secret/KMS 管理，不是明文 `.env`。没设置这把密钥也不会导致注册主机失败——BMH 和 Kubernetes Secret 照常创建，只是这个服务自己数据库里那份"方便以后重建 Secret 用"的备份不会存，属于优雅降级。
 
 ---
 

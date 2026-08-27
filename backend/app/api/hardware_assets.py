@@ -8,17 +8,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.models.hardware_asset import AssetStatus, HardwareAsset
+from app.schemas.baremetalhost import BMCCredentials
 from app.schemas.hardware_asset import (
     HardwareAssetCreate,
     HardwareAssetRead,
     HardwareAssetUpdate,
+    SetBmcCredentialsRequest,
     SyncFromIronicRequest,
 )
+from app.services import crypto
+from app.services.bmc import BMCService
 from app.services.introspection import enrich_with_ironic_inventory, parse_bmh_hardware
 from app.services.metal3 import Metal3Service
 
 router = APIRouter(prefix="/hardware-assets", tags=["hardware-assets"])
 metal3_service = Metal3Service()
+bmc_service = BMCService()
 
 
 @router.post("", response_model=HardwareAssetRead, status_code=201)
@@ -129,3 +134,62 @@ async def sync_from_ironic(
     await db.commit()
     await db.refresh(asset)
     return asset
+
+
+@router.post("/{asset_id}/bmc-credentials", response_model=HardwareAssetRead)
+async def set_bmc_credentials(
+    asset_id: uuid.UUID, payload: SetBmcCredentialsRequest, db: AsyncSession = Depends(get_db)
+):
+    """Encrypts and stores BMC credentials against an asset that wasn't
+    necessarily registered through POST /baremetalhosts (which does this
+    automatically) -- e.g. backfilling credentials for hardware that was
+    onboarded some other way. Immediately (re)writes the Kubernetes Secret
+    too, the same as registration does, so this and the BMH-registration
+    path can't drift into storing different passwords than what Metal3
+    actually has."""
+    asset = await db.get(HardwareAsset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+
+    try:
+        encrypted = crypto.encrypt_secret(payload.password)
+    except crypto.EncryptionKeyNotConfigured as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+    try:
+        bmc_service.store_credentials(asset.name, BMCCredentials(**payload.model_dump()))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"Stored encrypted locally, but failed to write the Kubernetes Secret: {exc}") from exc
+
+    asset.bmc_username = payload.username
+    asset.encrypted_bmc_password = encrypted
+    await db.commit()
+    await db.refresh(asset)
+    return asset
+
+
+@router.post("/{asset_id}/resync-bmc-secret")
+async def resync_bmc_secret(asset_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Decrypts the stored BMC password and re-writes the Kubernetes
+    Secret from it -- for when that Secret got deleted, the namespace got
+    recreated, or you're just not sure it's still in sync. Never returns
+    the password itself; only confirms the write happened."""
+    asset = await db.get(HardwareAsset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    if not asset.has_bmc_credentials or not asset.bmc_username:
+        raise HTTPException(409, "No BMC credentials are stored for this asset")
+
+    try:
+        password = crypto.decrypt_secret(asset.encrypted_bmc_password)
+    except crypto.EncryptionKeyNotConfigured as exc:
+        raise HTTPException(500, str(exc)) from exc
+    except crypto.InvalidToken as exc:
+        raise HTTPException(
+            500,
+            "Stored credential could not be decrypted with the configured BMC_ENCRYPTION_KEY "
+            "-- likely the key was rotated/changed without re-encrypting this row first.",
+        ) from exc
+
+    secret_name = bmc_service.store_credentials(asset.name, BMCCredentials(username=asset.bmc_username, password=password))
+    return {"asset_id": str(asset_id), "secret_name": secret_name, "resynced": True}

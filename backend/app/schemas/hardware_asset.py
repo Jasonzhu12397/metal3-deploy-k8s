@@ -68,12 +68,29 @@ class HardwareAssetRead(BaseModel):
     nics: list[dict]
     disks: list[dict]
     bmc_address: Optional[str] = None
+    bmc_username: Optional[str] = None
+    # Deliberately a boolean, never the encrypted (or, worse, decrypted)
+    # password itself -- there's no legitimate reason for any API response
+    # to carry that value back out, encrypted or not. Fetch the plaintext
+    # server-side only, at the one point it's actually needed
+    # (services/bmc.py writing the Kubernetes Secret).
+    has_bmc_credentials: bool = False
     boot_mac_address: Optional[str] = None
     node_pool_name: Optional[str] = None
     cluster_id: Optional[uuid.UUID] = None
 
     class Config:
         from_attributes = True
+
+
+class SetBmcCredentialsRequest(BaseModel):
+    """Separate from HardwareAssetUpdate on purpose: setting a BMC password
+    is a different, more sensitive operation than editing NIC roles, and
+    deserves its own endpoint/audit trail rather than being one optional
+    field among many on a general-purpose PATCH."""
+
+    username: str
+    password: str
 
 
 class HardwareAssetFilter(BaseModel):

@@ -114,6 +114,16 @@ export const api = {
         method: "POST",
         body: ironicInventory ? json({ ironic_inventory: ironicInventory }) : undefined,
       }),
+    setBmcCredentials: (id: string, username: string, password: string) =>
+      request<HardwareAsset>(`/hardware-assets/${id}/bmc-credentials`, {
+        method: "POST",
+        body: json({ username, password }),
+      }),
+    resyncBmcSecret: (id: string) =>
+      request<{ asset_id: string; secret_name: string; resynced: boolean }>(
+        `/hardware-assets/${id}/resync-bmc-secret`,
+        { method: "POST" },
+      ),
   },
 
   addons: {

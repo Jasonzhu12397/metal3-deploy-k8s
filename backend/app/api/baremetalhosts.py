@@ -11,6 +11,7 @@ from app.schemas.baremetalhost import (
     BareMetalHostCreate,
     BareMetalHostRead,
 )
+from app.services import crypto
 from app.services.metal3 import Metal3Service
 
 router = APIRouter(prefix="/baremetalhosts", tags=["baremetalhosts"])
@@ -18,17 +19,39 @@ metal3_service = Metal3Service()
 
 
 async def _upsert_hardware_asset_shell(payload: BareMetalHostCreate, db: AsyncSession) -> None:
-    """BMC address / boot MAC / pool are known at registration time and
-    never come from Ironic inspection -- so rather than making the caller
-    duplicate this data into a separate `POST /hardware-assets` call, we
-    seed (or update) the matching HardwareAsset row here. CPU/NIC/disk
-    fields stay empty until `POST /hardware-assets/{id}/sync-from-ironic`
-    runs after inspection completes."""
+    """BMC address / boot MAC / pool / credentials are known at
+    registration time and never come from Ironic inspection -- so rather
+    than making the caller duplicate this data into a separate
+    `POST /hardware-assets` call, we seed (or update) the matching
+    HardwareAsset row here. CPU/NIC/disk fields stay empty until
+    `POST /hardware-assets/{id}/sync-from-ironic` runs after inspection
+    completes.
+
+    The BMC password is encrypted (services/crypto.py) before it's
+    persisted -- this is what lets `POST /hardware-assets/{id}/resync-bmc-secret`
+    recreate the Kubernetes Secret later without asking anyone to re-type
+    the password, while still never storing it in plaintext. If
+    BMC_ENCRYPTION_KEY isn't configured, this silently skips storing the
+    password rather than raising -- the BMH registration itself has
+    already succeeded at this point (the Secret is written either way),
+    so a missing encryption key degrades this app's own "remember it for
+    later" convenience feature, not the actual BMH/Secret creation that
+    Metal3 depends on."""
     existing = await db.scalar(select(HardwareAsset).where(HardwareAsset.name == payload.name))
+
+    encrypted_password = None
+    try:
+        encrypted_password = crypto.encrypt_secret(payload.credentials.password)
+    except crypto.EncryptionKeyNotConfigured:
+        pass  # see docstring -- BMH/Secret creation already succeeded regardless
+
     if existing:
         existing.bmc_address = payload.bmc_address
         existing.boot_mac_address = payload.boot_mac_address
         existing.node_pool_name = payload.node_pool_name
+        existing.bmc_username = payload.credentials.username
+        if encrypted_password is not None:
+            existing.encrypted_bmc_password = encrypted_password
     else:
         db.add(
             HardwareAsset(
@@ -36,6 +59,8 @@ async def _upsert_hardware_asset_shell(payload: BareMetalHostCreate, db: AsyncSe
                 bmc_address=payload.bmc_address,
                 boot_mac_address=payload.boot_mac_address,
                 node_pool_name=payload.node_pool_name,
+                bmc_username=payload.credentials.username,
+                encrypted_bmc_password=encrypted_password,
                 status=AssetStatus.DISCOVERED,
             )
         )

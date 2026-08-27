@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: Optional[str] = None
 
+    # --- BMC credential encryption ---
+    # Fernet key(s) for encrypting stored BMC credentials at rest (see
+    # services/crypto.py). Comma-separate multiple keys during a rotation
+    # (newest first); a single key is the normal case. Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # MUST be set outside this database -- storing it in the same table as
+    # the ciphertext it decrypts defeats the entire point.
+    BMC_ENCRYPTION_KEY: Optional[str] = None
+
     # --- Metal3 / Kubernetes ---
     # Path to the kubeconfig for the *management* (bootstrap/ephemeral or
     # permanent CAPI management) cluster that hosts Metal3 + Cluster API.

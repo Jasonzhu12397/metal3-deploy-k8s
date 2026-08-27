@@ -74,7 +74,7 @@ Before this project (or any tooling) touches these files:
 
 1. **Rotate every credential in them.** Anything that has ever been pasted into a chat, ticket, or repo should be treated as compromised.
 2. Never commit them, or a `.env` with real values, to git. This repo's `.gitignore`-worthy paths: `.env`, `deploy/kubeconfig/config`, any `*.pem`/`*-key`.
-3. This service intentionally never stores BMC/SSH/CA secrets in its own database -- it only stores a *reference* (a Kubernetes Secret name). Keep it that way if you extend it.
+3. **BMC passwords are stored encrypted in this app's own database** (Fernet symmetric encryption, `services/crypto.py`) so an operator can recreate a deleted/rotated Kubernetes Secret without re-typing the password (`POST /hardware-assets/{id}/resync-bmc-secret`). This was a deliberate change from the original "never touches our own DB" design, made because there's a real hardware-management workflow that needs to look credentials back up later -- it is NOT the same as storing them in plaintext or base64: the encryption key (`BMC_ENCRYPTION_KEY`) lives outside this database entirely (env var / mounted Secret), and no API response ever returns the password, encrypted or plain -- only a `has_bmc_credentials` boolean. SSH private keys and the cluster CA private key are a different matter and are NOT covered by this mechanism -- don't extend it to those without separately deciding that's the right call.
 4. Use a real secret manager (Vault, SOPS + git, k8s External Secrets, etc.) for anything currently living as plaintext in your YAML files.
 
 ## Architecture
@@ -228,6 +228,40 @@ same either way -- only how the token gets issued changes.
 Intentionally still left as extension points (environment-specific, can't
 be guessed generically): the ephemeral node's own PXE/SDI3 bootstrap
 sequence, and the addon-install step.
+
+## BMC credential storage
+
+**This is a login password (hashed, one-way, never recovered) vs. a BMC
+password (has to come back out as plaintext eventually, because this app
+hands it to Kubernetes as a Secret value) are fundamentally different
+problems, using fundamentally different primitives.** BMC credentials are
+encrypted with Fernet (`services/crypto.py`, `cryptography.fernet`) --
+*not* hashed, and definitely not base64 (base64 is an encoding with no
+key at all; anyone with the ciphertext reverses it in one line, no secret
+required -- it provides zero confidentiality and should never be
+mistaken for encryption).
+
+- `BMC_ENCRYPTION_KEY` must be set outside this database (env var /
+  mounted Secret / KMS). Generate one with:
+  ```bash
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  ```
+- Registering a BMH (`POST /baremetalhosts`) encrypts and stores the
+  password automatically alongside writing the Kubernetes Secret (which
+  is still what baremetal-operator actually reads from -- this database
+  is not a second live copy Ironic depends on, it's how *this app* can
+  recreate that Secret later without asking anyone to re-type the
+  password).
+- No API response, ever, contains the plaintext password or the
+  ciphertext -- `HardwareAssetRead` only exposes `has_bmc_credentials: bool`.
+  `POST /hardware-assets/{id}/resync-bmc-secret` decrypts server-side and
+  re-writes the Secret; the password itself never travels back to the
+  caller.
+- `BMC_ENCRYPTION_KEY` is comma-separatable for key rotation (newest
+  first) -- see `services/crypto.rotate_key` and its docstring for the
+  actual rotation procedure. Losing the key entirely means every
+  previously-encrypted credential becomes permanently unrecoverable by
+  design; there is no backdoor.
 
 ## Tests
 

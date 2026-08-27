@@ -1,9 +1,19 @@
 """
 BMC credential + power-management service.
 
-Credentials are written straight into a Kubernetes Secret (referenced by
-BareMetalHost.spec.bmc.credentialsName) and are never persisted to the
-application database or written to disk/logs by this service.
+This service's own job is narrow: write credentials straight into a
+Kubernetes Secret (referenced by BareMetalHost.spec.bmc.credentialsName)
+and nothing else -- it never touches this app's database or writes
+credentials to disk/logs itself.
+
+Separately, callers (api/baremetalhosts.py, api/hardware_assets.py) DO
+persist an encrypted copy of the password in this app's own database via
+services/crypto.py, so a deleted/rotated Secret can be recreated without
+asking anyone to re-type it. That's a deliberate, distinct decision made
+at the API layer, not something this service does on its own -- keeping
+BMCService itself free of DB access means the "write the Secret" and
+"remember it for later, encrypted" concerns stay independently testable
+and one can't silently start depending on the other.
 """
 from __future__ import annotations
 
