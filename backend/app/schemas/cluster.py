@@ -28,7 +28,7 @@ class WorkerPoolSpec(BaseModel):
 
 
 class ClusterCreate(BaseModel):
-    name: str = Field(..., description="Cluster name, e.g. pk-cnis-pcg")
+    name: str = Field(..., description="Cluster name, e.g. prod-cluster-01")
     namespace: str = "metal3"
     infrastructure_provider: InfrastructureProvider = InfrastructureProvider.METAL3
     control_plane_count: int = 3
@@ -37,9 +37,8 @@ class ClusterCreate(BaseModel):
     control_plane_flavor: Optional[str] = None
     control_plane_image: Optional[str] = None
     worker_pools: list[WorkerPoolSpec] = Field(default_factory=list)
-    # Arbitrary extra spec (pod/service CIDRs, networks, iaas, etc.)
-    # mirroring the ccdadm-config.yaml structure the user already has, plus
-    # provider-specific cloud config for non-metal3 clusters, e.g.:
+    # Arbitrary extra spec (pod/service CIDRs, networks, iaas, etc.),
+    # plus provider-specific cloud config for non-metal3 clusters, e.g.:
     #   openstack: {cloud_name, external_network_id, availability_zone}
     #   vsphere:   {server, datacenter, datastore, network, resource_pool}
     #   kubevirt:  {storage_class_name, namespace}

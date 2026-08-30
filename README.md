@@ -65,16 +65,18 @@ It also still exposes:
 
 ## ⚠️ Before you do anything else: secrets
 
-The files you're using as source material (`bmh.yaml`/`bmhosts.yaml`,
-`k8s-config.yaml`/`ccdadm-config.yaml`) contain **live secrets** --
-SSH private keys, the cluster's CA private key, an LDAP bind password,
-a console password hash, registry/webhook passwords, etc.
+If you're bootstrapping this from existing `bmhosts.yaml`/cluster-config-style
+files that already have real BMC credentials, SSH private keys, a
+cluster CA private key, LDAP bind passwords, or console password
+hashes baked in, treat all of that as **compromised the moment it left
+its original, access-controlled location** -- pasted into a chat,
+committed to a repo, attached to a ticket, whatever.
 
-Before this project (or any tooling) touches these files:
+Before this project (or any tooling) touches files like that:
 
-1. **Rotate every credential in them.** Anything that has ever been pasted into a chat, ticket, or repo should be treated as compromised.
+1. **Rotate every credential in them.**
 2. Never commit them, or a `.env` with real values, to git. This repo's `.gitignore`-worthy paths: `.env`, `deploy/kubeconfig/config`, any `*.pem`/`*-key`.
-3. **BMC passwords are stored encrypted in this app's own database** (Fernet symmetric encryption, `services/crypto.py`) so an operator can recreate a deleted/rotated Kubernetes Secret without re-typing the password (`POST /hardware-assets/{id}/resync-bmc-secret`). This was a deliberate change from the original "never touches our own DB" design, made because there's a real hardware-management workflow that needs to look credentials back up later -- it is NOT the same as storing them in plaintext or base64: the encryption key (`BMC_ENCRYPTION_KEY`) lives outside this database entirely (env var / mounted Secret), and no API response ever returns the password, encrypted or plain -- only a `has_bmc_credentials` boolean. SSH private keys and the cluster CA private key are a different matter and are NOT covered by this mechanism -- don't extend it to those without separately deciding that's the right call.
+3. **BMC passwords are stored encrypted in this app's own database** (Fernet symmetric encryption, `services/crypto.py`) so an operator can recreate a deleted/rotated Kubernetes Secret without re-typing the password (`POST /hardware-assets/{id}/resync-bmc-secret`). This is NOT the same as storing them in plaintext or base64: the encryption key (`BMC_ENCRYPTION_KEY`) lives outside this database entirely (env var / mounted Secret), and no API response ever returns the password, encrypted or plain -- only a `has_bmc_credentials` boolean. SSH private keys and any cluster CA private key are a different matter and are NOT covered by this mechanism -- don't extend it to those without separately deciding that's the right call.
 4. Use a real secret manager (Vault, SOPS + git, k8s External Secrets, etc.) for anything currently living as plaintext in your YAML files.
 
 ## Architecture

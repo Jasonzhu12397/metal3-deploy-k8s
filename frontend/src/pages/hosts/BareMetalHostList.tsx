@@ -135,7 +135,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
             <input
               className="input"
               required
-              placeholder="pk-dell8-1-1-sd001-wp01"
+              placeholder="worker-node-01"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />

@@ -42,10 +42,10 @@ WS   /deployments/{id}/ws               订阅进度
 curl -s -X POST http://localhost:8000/api/v1/clusters \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "pk-cnis-pcg",
+    "name": "prod-cluster-01",
     "namespace": "metal3",
     "control_plane_count": 3,
-    "control_plane_endpoint": "10.138.165.27",
+    "control_plane_endpoint": "192.0.2.1",
     "spec": {
       "pod_cidr": "192.168.0.0/16",
       "service_cidr": "10.96.0.0/12",
@@ -68,7 +68,7 @@ CLUSTER_ID=$(curl -s -X POST http://localhost:8000/api/v1/clusters -H "Content-T
 curl -s http://localhost:8000/api/v1/clusters                 # 列表
 curl -s http://localhost:8000/api/v1/clusters/$CLUSTER_ID      # 详情
 curl -s -X PATCH http://localhost:8000/api/v1/clusters/$CLUSTER_ID \
-  -H "Content-Type: application/json" -d '{"control_plane_endpoint": "10.138.165.28"}'
+  -H "Content-Type: application/json" -d '{"control_plane_endpoint": "192.0.2.2"}'
 ```
 
 ### 1.1 云 provider 建集群（OpenStack / vSphere / KubeVirt）
@@ -118,10 +118,10 @@ curl -s -X POST http://localhost:8000/api/v1/clusters \
 curl -s -X POST http://localhost:8000/api/v1/baremetalhosts \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "pk-dell8-1-1-sd001-wp01",
+    "name": "worker-node-01",
     "node_pool_name": "pool1",
-    "bmc_address": "sdi+netconf://172.18.37.1/pk-cnis-pcg-tenant/1001",
-    "boot_mac_address": "b4:e9:b8:08:37:c2",
+    "bmc_address": "redfish://192.0.2.10/redfish/v1/Systems/1",
+    "boot_mac_address": "aa:bb:cc:dd:ee:01",
     "credentials": {
       "username": "换成真实用户名",
       "password": "换成真实密码"
@@ -142,8 +142,8 @@ curl -s -X POST http://localhost:8000/api/v1/baremetalhosts/bulk-import \
 查状态 / 开关机：
 
 ```bash
-curl -s http://localhost:8000/api/v1/baremetalhosts/pk-dell8-1-1-sd001-wp01/status
-curl -s -X POST "http://localhost:8000/api/v1/baremetalhosts/pk-dell8-1-1-sd001-wp01/power?online=true"
+curl -s http://localhost:8000/api/v1/baremetalhosts/worker-node-01/status
+curl -s -X POST "http://localhost:8000/api/v1/baremetalhosts/worker-node-01/power?online=true"
 ```
 
 BMH apply 之后，baremetal-operator 会驱动 Ironic 去做硬件 inspection，这一步在管理集群那边跑，跟本服务无关，正常几分钟能跑完。可以用 `status` 接口轮询，直到 `provisioning.state` 变成 `inspecting` 之后再变成 `available`。
@@ -157,7 +157,7 @@ BMH apply 之后，baremetal-operator 会驱动 Ironic 去做硬件 inspection�
 第 2 步注册 BMH 的时候，系统已经自动帮你建好了对应的 `HardwareAsset` 壳子（`bmc_address`/`boot_mac_address`/`node_pool_name` 是从 BMH 注册请求里带过来的 —— 这几项本来就不是 Ironic 探测出来的，没必要让你重复填一遍）。直接按名字查出它的 id 就行，不用再手动 `POST /hardware-assets`：
 
 ```bash
-ASSET_ID=$(curl -s http://localhost:8000/api/v1/hardware-assets | jq -r '.[] | select(.name=="pk-dell8-1-1-sd001-wp01") | .id')
+ASSET_ID=$(curl -s http://localhost:8000/api/v1/hardware-assets | jq -r '.[] | select(.name=="worker-node-01") | .id')
 ```
 
 （如果你想在物理机还没接进 BMH 流程之前就先规划硬件——比如提前建库存、还没决定 BMC 地址——`POST /hardware-assets` 这个手动建壳子的接口仍然保留，见文末"手动登记硬件"。）
@@ -191,7 +191,7 @@ curl -s http://localhost:8000/api/v1/hardware-assets/$ASSET_ID | jq
 ```json
 {
   "id": "...",
-  "name": "pk-dell8-1-1-sd001-wp01",
+  "name": "worker-node-01",
   "status": "available",
   "cpu_sockets": 2,
   "cpu_cores_per_socket": 32,
@@ -305,7 +305,7 @@ curl -s -X POST "http://localhost:8000/api/v1/clusters/$CLUSTER_ID/pools/pool1/a
 ]
 ```
 
-（这个换算规则：物理核按 socket 连续编号，超线程兄弟核 = 物理核号 + 总物理核数；每个 socket 预留前 N 个物理核 + 它们的兄弟核。跟你们现网配置里 `pk-cnis-pcg-secret`/`ccdadm-config.yaml` 里手写的 `reserved_cpus` 是同一套规则，算出来的结果完全一致。）
+（这个换算规则：物理核按 socket 连续编号，超线程兄弟核 = 物理核号 + 总物理核数；每个 socket 预留前 N 个物理核 + 它们的兄弟核。这是 Linux 下超线程编号的通用规律，不是这个项目自己发明的算法，跟任何厂商的现网配置手写规则对照都应该一致。）
 
 查看某个集群目前每个 pool 的组成：
 
@@ -338,7 +338,7 @@ curl -s -X POST "http://localhost:8000/api/v1/clusters/$CLUSTER_ID/manifests/gen
   "bmh_yaml": "apiVersion: metal3.io/v1alpha1\nkind: BareMetalHost\n...",
   "cluster_config_yaml": "apiVersion: cluster.x-k8s.io/v1beta1\nkind: Cluster\n...",
   "network_policies": {
-    "pool1/pk-dell8-1-1-sd001-wp01": "interfaces:\n  - name: 0000:02:00.0\n..."
+    "pool1/worker-node-01": "interfaces:\n  - name: 0000:02:00.0\n..."
   },
   "eph_net_yaml": null
 }
@@ -425,9 +425,9 @@ websocat "ws://localhost:8000/api/v1/deployments/$DEPLOYMENT_ID/ws"
 单独开关某台机器（不走 deployment 流程）：
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/bmc/pk-dell8-1-1-sd001-wp01/power/on
-curl -s -X POST http://localhost:8000/api/v1/bmc/pk-dell8-1-1-sd001-wp01/power/off
-curl -s -X POST http://localhost:8000/api/v1/bmc/pk-dell8-1-1-sd001-wp01/power/reboot
+curl -s -X POST http://localhost:8000/api/v1/bmc/worker-node-01/power/on
+curl -s -X POST http://localhost:8000/api/v1/bmc/worker-node-01/power/off
+curl -s -X POST http://localhost:8000/api/v1/bmc/worker-node-01/power/reboot
 ```
 
 底层还是走 `BareMetalHost.spec.online`，Metal3 的 baremetal-operator 负责真正调 BMC，这层只是改期望状态，不直接连 BMC。
@@ -439,7 +439,7 @@ curl -s -X POST http://localhost:8000/api/v1/bmc/pk-dell8-1-1-sd001-wp01/power/r
 集群 apply 之后，CAPI 会为每个 pool 拉起对应数量的 `Machine`：
 
 ```bash
-curl -s "http://localhost:8000/api/v1/machines?cluster_name=pk-cnis-pcg&namespace=metal3"
+curl -s "http://localhost:8000/api/v1/machines?cluster_name=prod-cluster-01&namespace=metal3"
 ```
 
 ---

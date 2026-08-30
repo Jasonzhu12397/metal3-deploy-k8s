@@ -27,12 +27,12 @@ def test_isolated_cpu_count():
 
 def _asset(**kw):
     defaults = dict(
-        name="pk-dell8-1-1-sd001-wp01",
+        name="worker-node-01",
         cpu_sockets=2,
         cpu_cores_per_socket=32,
         cpu_threads_per_core=2,
-        bmc_address="sdi+netconf://172.18.37.1/tenant/1001",
-        boot_mac_address="b4:e9:b8:08:37:c2",
+        bmc_address="redfish://192.0.2.10/redfish/v1/Systems/1",
+        boot_mac_address="aa:bb:cc:dd:ee:01",
         node_pool_name="pool1",
         nics=[
             {"pci_address": "0000:02:00.0", "role": "control"},
@@ -70,7 +70,7 @@ def test_build_bmh_host_entry_uses_os_disk_as_root_hint():
     entry = planner.build_bmh_host_entry(asset)
     assert entry["root_device_hint_model"] == "Dell BOSS-N1"
     assert entry["bmc_address"] == asset.bmc_address
-    assert entry["secret_ref"] == "pk-dell8-1-1-sd001-wp01-bmc-secret"
+    assert entry["secret_ref"] == "worker-node-01-bmc-secret"
 
 
 def test_network_policy_groups_nics_by_role_into_bonds():
@@ -91,10 +91,10 @@ def test_generate_bundle_produces_valid_yaml_for_picked_hardware():
     assignment = _assignment()
     pools = {"pool1": ([asset], [assignment])}
     cluster_spec = {
-        "name": "pk-cnis-pcg",
+        "name": "prod-cluster-01",
         "namespace": "metal3",
         "control_plane_count": 3,
-        "control_plane_endpoint": "10.138.165.27",
+        "control_plane_endpoint": "192.0.2.1",
     }
     bundle = planner.generate_bundle(cluster_spec, pools)
 
@@ -107,7 +107,7 @@ def test_generate_bundle_produces_valid_yaml_for_picked_hardware():
     kubelet_args = kct["spec"]["template"]["spec"]["joinConfiguration"]["nodeRegistration"]["kubeletExtraArgs"]
     assert kubelet_args["reserved-cpus"] == "0,64,1,65,2,66,3,67,32,96,33,97,34,98,35,99"
 
-    assert "pool1/pk-dell8-1-1-sd001-wp01" in bundle["network_policies"]
+    assert "pool1/worker-node-01" in bundle["network_policies"]
 
 
 def test_control_plane_pool_drives_kubeadmcontrolplane_not_a_machinedeployment():

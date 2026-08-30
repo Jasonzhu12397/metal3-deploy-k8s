@@ -146,7 +146,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
           <input
             className="input"
             required
-            placeholder="pk-cnis-pcg"
+            placeholder="prod-cluster-01"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
@@ -202,7 +202,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
           <label className="label">控制面 Endpoint（VIP）</label>
           <input
             className="input mono"
-            placeholder="10.138.165.27"
+            placeholder="192.0.2.1"
             value={form.control_plane_endpoint ?? ""}
             onChange={(e) => setForm({ ...form, control_plane_endpoint: e.target.value })}
           />

@@ -23,7 +23,7 @@ class BMCCredentials(BaseModel):
 class BareMetalHostCreate(BaseModel):
     name: str
     node_pool_name: str
-    bmc_address: str  # e.g. sdi+netconf://172.18.37.1/<vpod>/<node-id>
+    bmc_address: str  # e.g. redfish://192.0.2.10/redfish/v1/Systems/1 (or a vendor-specific netconf/proprietary scheme -- stored and passed through as an opaque string either way)
     boot_mac_address: str
     credentials: BMCCredentials
     online: bool = False

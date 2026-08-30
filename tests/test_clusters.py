@@ -15,28 +15,28 @@ def test_render_bmh():
     out = gen.render_bmh(
         [
             {
-                "name": "pk-dell8-1-1-sd001-wp01",
+                "name": "worker-node-01",
                 "node_pool_name": "pool1",
-                "bmc_address": "sdi+netconf://172.18.37.1/tenant/1001",
-                "secret_ref": "pk-dell8-1-1-sd001-wp01-bmc-secret",
-                "boot_mac_address": "b4:e9:b8:08:37:c2",
+                "bmc_address": "redfish://192.0.2.10/redfish/v1/Systems/1",
+                "secret_ref": "worker-node-01-bmc-secret",
+                "boot_mac_address": "aa:bb:cc:dd:ee:01",
                 "online": False,
             }
         ]
     )
     docs = gen.parse_multi(out)
     assert docs[0]["kind"] == "BareMetalHost"
-    assert docs[0]["spec"]["bmc"]["credentialsName"] == "pk-dell8-1-1-sd001-wp01-bmc-secret"
+    assert docs[0]["spec"]["bmc"]["credentialsName"] == "worker-node-01-bmc-secret"
 
 
 def test_render_cluster_config():
     gen = YamlGeneratorService()
     out = gen.render_cluster_config(
         {
-            "name": "pk-cnis-pcg",
+            "name": "prod-cluster-01",
             "namespace": "metal3",
             "control_plane_count": 3,
-            "control_plane_endpoint": "10.138.165.27",
+            "control_plane_endpoint": "192.0.2.1",
             "worker_pools": [{"name": "pool1", "count": 4, "node_labels": ["role=osd"]}],
         }
     )
