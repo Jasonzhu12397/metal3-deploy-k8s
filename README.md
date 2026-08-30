@@ -111,7 +111,7 @@ frontend/           React + Vite + TypeScript console (see "Frontend" below)
 3. `applying_bmh` / `waiting_for_hosts` – confirms registered `BareMetalHost` objects reach `available`
 4. `applying_cluster` – applies `Cluster` / `Metal3Cluster` / `KubeadmControlPlane` / `Metal3MachineTemplate` / `MachineDeployment`
 5. `waiting_for_control_plane` – polls the CAPI `Cluster` status for `ControlPlaneReady`
-6. `installing_addons` – extension point for Helm/kubectl-driven addons (calico, ceph, ecfe, apigateway, pm, dex, ...)
+6. `installing_addons` – extension point for Helm/kubectl-driven addons (calico, ceph, bgp-lb, apigateway, pm, dex, ...)
 7. `complete` / `failed`
 
 Progress is broadcast over `GET /api/v1/deployments/{id}/ws`.
@@ -148,7 +148,7 @@ built directly against the API above:
 - **硬件资产 Hardware Assets** — rack-view or table view of inventory; a drawer to sync from Ironic and fix NIC/disk roles; the pool-assignment modal renders a live **CPU core map** (a literal reserved-vs-isolated core grid, computed client-side with the same math as `cpu_topology.py`) as you drag the reserved-cores-per-socket slider
 - **裸金属主机 Bare Metal Hosts** — register BMHs, power on/off
 - **部署任务 Deployments** — trigger a deployment, watch phases update live over the WebSocket
-- **应用目录 App Catalog** — reference catalog of this platform's addons (calico/ceph/ecfe/apigateway/pm/dex/...); Ingress has been dropped in favor of the Gateway API. Cross-referenced against a selected cluster's configured addons
+- **应用目录 App Catalog** — reference catalog of this platform's addons (calico/ceph/bgp-lb/apigateway/pm/dex/...); Ingress has been dropped in favor of the Gateway API. Cross-referenced against a selected cluster's configured addons
 
 ```bash
 cd frontend

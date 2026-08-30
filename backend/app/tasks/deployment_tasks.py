@@ -125,7 +125,7 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
             raise TimeoutError("Control plane did not become ready in time")
 
         await _set_phase(deployment_id, DeploymentPhase.INSTALLING_ADDONS, "installing addon charts")
-        # Addon install (calico, ceph, ecfe, apigateway, pm, dex, ...) is
+        # Addon install (calico, ceph, bgp-lb, apigateway, pm, dex, ...) is
         # deliberately left as an extension point -- wire in Helm/kubectl
         # apply calls here driven by cluster_spec["addons"].
 

@@ -1,9 +1,9 @@
 """
 Static catalog of the addons this platform knows how to install on a
-target cluster -- the "app store" catalog. Mirrors the addon set already
-used in the operator's existing ccdadm-config.yaml (`addons:` section) so
-switching to this platform doesn't lose any of them; add new entries here
-as new addons are supported.
+target cluster -- the "app store" catalog. Covers the common CNI/
+storage/observability/platform addon set a typical telco-grade bare-metal
+Kubernetes deployment needs; add new entries here as new addons are
+supported.
 
 Actually installing an addon (Helm/kubectl apply) is still the extension
 point noted in `tasks/deployment_tasks.py` (`installing_addons` phase) --
@@ -43,9 +43,9 @@ ADDON_CATALOG: list[AddonCatalogEntry] = [
     {"name": "sriov-network-device-plugin", "display_name": "SR-IOV Device Plugin", "category": "networking",
      "description": "Exposes SR-IOV VFs on high-throughput pools as schedulable device resources.",
      "icon": "SRI"},
-    {"name": "ecfe", "display_name": "ECFE (BGP Speaker)", "category": "networking",
-     "description": "BGP/BFD-based external LoadBalancer IP announcement (OAM/signalling/LI pools).",
-     "icon": "ECF"},
+    {"name": "bgp-lb", "display_name": "BGP LoadBalancer Speaker", "category": "networking",
+     "description": "BGP/BFD-based external LoadBalancer IP announcement for service VIPs (MetalLB-style, BGP mode) -- lets external routers learn a service's VIP as a route instead of relying on ARP/L2, so VIPs can be spread across multiple upstream network segments.",
+     "icon": "BGP"},
     {"name": "apigateway", "display_name": "Gateway API", "category": "networking",
      "description": "Kubernetes Gateway API implementation, exposing north-south HTTP/gRPC routes. Replaces the older Ingress-based setup (ingress-nginx) -- Ingress is now deprecated in favor of Gateway API's HTTPRoute/Gateway resources.",
      "icon": "APG"},
@@ -64,8 +64,8 @@ ADDON_CATALOG: list[AddonCatalogEntry] = [
     {"name": "dex", "display_name": "Dex (OIDC)", "category": "platform",
      "description": "OIDC identity broker; wires kubectl/console auth to an LDAP backend.",
      "icon": "DEX"},
-    {"name": "ccd-licensing", "display_name": "Licensing", "category": "platform",
-     "description": "NELS license-server integration.",
+    {"name": "license-manager", "display_name": "Licensing", "category": "platform",
+     "description": "Central license-server integration for cluster entitlement/capacity validation.",
      "icon": "LIC"},
     {"name": "metrics-server", "display_name": "Metrics Server", "category": "observability",
      "description": "Resource metrics API backing `kubectl top` and HPA.",
@@ -73,7 +73,7 @@ ADDON_CATALOG: list[AddonCatalogEntry] = [
     {"name": "pm", "display_name": "Prometheus Monitoring", "category": "observability",
      "description": "VictoriaMetrics-based metrics stack + Alertmanager, exposed via the Gateway API.",
      "icon": "PM"},
-    {"name": "pm_webhook_snmp", "display_name": "SNMP Alert Forwarder", "category": "observability",
+    {"name": "snmp-alert-forwarder", "display_name": "SNMP Alert Forwarder", "category": "observability",
      "description": "Forwards Alertmanager webhooks as SNMP traps to an external NMS.",
      "icon": "SNM"},
     {"name": "fluent-bit", "display_name": "Fluent Bit", "category": "observability",
