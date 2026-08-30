@@ -257,6 +257,14 @@ docker compose down -v   # -v 会连数据卷一起删，postgres 数据也没�
 
 ---
 
+## 8.5 没有真实物理机，想测试完整流程怎么办
+
+用虚拟机模拟——不是随便建几台 VM 那么简单，是用 [sushy-tools](https://opendev.org/openstack/sushy-tools) 把虚拟机包装成真正的 Redfish BMC，让 Ironic 像操作真实 iDRAC/iLO 一样操作它，走完整条注册-探测-部署链路。这跟 metal3-io 官方自己测试用的方法（`metal3-dev-env`）是一回事。
+
+详细步骤见 `deploy/testing/vm-bmc/README.md`——这套东西需要 Linux + KVM，如果你是在 Hyper-V 的 Linux VM 里跑（比如现在这台 `ccdadm`），要先在 Windows 主机上给这台 VM 开嵌套虚拟化，文档里写了具体命令。
+
+---
+
 ## 9. 生产化建议（超出本手册范围，但值得记一下）
 
 - 数据库迁移：目前 `init_db()` 用的是 SQLAlchemy 的 `create_all()`，够开发用；生产环境建议接入 Alembic（`requirements.txt` 里已经有这个包）做版本化迁移。

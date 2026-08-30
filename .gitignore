@@ -16,3 +16,6 @@ frontend/.env
 
 # misc
 .DS_Store
+
+# vm-bmc testing artifacts (local, environment-specific)
+deploy/testing/vm-bmc/test_nodes.json

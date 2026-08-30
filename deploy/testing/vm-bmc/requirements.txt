@@ -1,0 +1,8 @@
+# sushy-tools is OpenStack's official Redfish emulator -- this is not a
+# hand-rolled fake BMC, it's the same tool the metal3-io project's own
+# CI (metal3-dev-env) uses to test the exact BareMetalHost/Ironic flow
+# without real hardware. libvirt-python is its dependency for talking to
+# the local libvirt daemon.
+sushy-tools==1.4.0
+libvirt-python==10.0.0
+requests==2.32.3
