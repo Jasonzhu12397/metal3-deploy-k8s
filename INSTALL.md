@@ -136,6 +136,27 @@ docker compose up -d
 
 ---
 
+## 5.5 想用域名 + HTTPS 访问（可选）
+
+默认的 `docker compose up` 只是把 `frontend` 直接映射到宿主机 `:8080`，走的是明文
+HTTP，`postgres`/`redis`/`api` 的端口也是直接暴露在宿主机上的——本地测试没问题，
+但要给别人访问、或者绑了域名，就不该这么裸奔。
+
+```bash
+# 自签证书，几秒钟搞定，浏览器会提示"不安全"，适合内网/临时测试
+sudo ./scripts/setup-https-selfsigned.sh 你的域名
+
+# 真正被信任的证书（Let's Encrypt），要求域名已解析到这台机器、80 端口公网可达
+sudo ./scripts/setup-https-letsencrypt.sh 你的域名 你的邮箱
+```
+
+两个脚本都会把 `postgres`/`redis`/`api` 的直接端口暴露收掉，只留 nginx 对外开
+80/443，`frontend`/`api` 继续通过 Docker 内部网络访问。详细说明、Let's Encrypt
+需要的前置条件（国内云主机的 ICP 备案要求、证书续期）、以及这两个脚本目前还没
+在什么环境下验证过，见 `deploy/nginx/README.md`。
+
+---
+
 ## 6. 验证安装
 
 ```bash
