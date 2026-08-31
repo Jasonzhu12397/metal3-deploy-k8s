@@ -12,6 +12,7 @@ import BareMetalHostList from "./pages/hosts/BareMetalHostList";
 import DeploymentList from "./pages/deployments/DeploymentList";
 import DeploymentDetail from "./pages/deployments/DeploymentDetail";
 import AppCatalog from "./pages/catalog/AppCatalog";
+import LLMProviders from "./pages/ai/LLMProviders";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/deployments" element={<DeploymentList />} />
               <Route path="/deployments/:id" element={<DeploymentDetail />} />
               <Route path="/app-catalog" element={<AppCatalog />} />
+              <Route path="/llm-providers" element={<LLMProviders />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

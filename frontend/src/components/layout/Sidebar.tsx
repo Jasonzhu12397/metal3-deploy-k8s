@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Cpu,
   LayoutGrid,
   Package,
   Rocket,
@@ -15,6 +16,7 @@ const NAV = [
   { to: "/baremetal-hosts", label: "裸金属主机", icon: Server },
   { to: "/deployments", label: "部署任务", icon: Rocket },
   { to: "/app-catalog", label: "应用目录", icon: Package },
+  { to: "/llm-providers", label: "LLM 凭证", icon: Cpu },
 ];
 
 export function Sidebar() {

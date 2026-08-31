@@ -12,6 +12,7 @@ from app.api import (
     deployments,
     hardware_assets,
     health,
+    llm_providers,
     machines,
     manifests,
     planner,
@@ -61,6 +62,7 @@ app.include_router(manifests.router, prefix=settings.API_V1_PREFIX, dependencies
 app.include_router(hardware_assets.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
 app.include_router(planner.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
 app.include_router(addons.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
+app.include_router(llm_providers.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
 
 
 @app.get("/")

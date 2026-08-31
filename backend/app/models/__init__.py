@@ -15,6 +15,7 @@ from app.models.baremetalhost import BareMetalHost
 from app.models.cluster import Cluster
 from app.models.deployment import Deployment
 from app.models.hardware_asset import HardwareAsset
+from app.models.llm_provider import LLMProviderCredential
 from app.models.machine import Machine
 from app.models.pool_assignment import NodePoolAssignment
 from app.models.user import User
@@ -24,6 +25,7 @@ __all__ = [
     "Cluster",
     "Deployment",
     "HardwareAsset",
+    "LLMProviderCredential",
     "Machine",
     "NodePoolAssignment",
     "User",

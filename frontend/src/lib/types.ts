@@ -176,3 +176,23 @@ export interface AddonToggleResult {
   name: string;
   enabled: boolean;
 }
+
+export type LLMProviderKind = "openai" | "deepseek" | "qwen" | "doubao" | "custom";
+
+export interface LLMProviderCredential {
+  id: string;
+  label: string;
+  provider: LLMProviderKind;
+  base_url: string;
+  default_model: string | null;
+  // Deliberately no api_key field -- the API never returns it, encrypted
+  // or plain. See README's "BMC credential storage" section for the same
+  // principle applied to a different credential type.
+}
+
+export interface LLMProviderTestResult {
+  ok: boolean;
+  latency_ms: number | null;
+  model_used: string | null;
+  error: string | null;
+}

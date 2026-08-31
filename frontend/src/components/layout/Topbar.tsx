@@ -10,6 +10,7 @@ const TITLES: Record<string, string> = {
   "/baremetal-hosts": "裸金属主机",
   "/deployments": "部署任务",
   "/app-catalog": "应用目录",
+  "/llm-providers": "LLM 凭证",
 };
 
 async function pingHealth(): Promise<boolean> {

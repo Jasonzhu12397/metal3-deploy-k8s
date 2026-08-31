@@ -7,6 +7,8 @@ import type {
   ClusterManifestBundle,
   Deployment,
   HardwareAsset,
+  LLMProviderCredential,
+  LLMProviderTestResult,
   PoolAssignment,
   PoolAssignRequest,
 } from "./types";
@@ -134,6 +136,20 @@ export const api = {
       request<AddonToggleResult>(`/clusters/${clusterId}/addons/${name}/enable`, { method: "POST" }),
     disable: (clusterId: string, name: string) =>
       request<AddonToggleResult>(`/clusters/${clusterId}/addons/${name}/disable`, { method: "DELETE" }),
+  },
+
+  llmProviders: {
+    list: () => request<LLMProviderCredential[]>("/llm-providers"),
+    create: (body: {
+      label: string;
+      provider: string;
+      api_key: string;
+      base_url?: string;
+      default_model?: string;
+    }) => request<LLMProviderCredential>("/llm-providers", { method: "POST", body: json(body) }),
+    remove: (id: string) => request<void>(`/llm-providers/${id}`, { method: "DELETE" }),
+    testConnection: (id: string) =>
+      request<LLMProviderTestResult>(`/llm-providers/${id}/test-connection`, { method: "POST" }),
   },
 
   baremetalHosts: {

@@ -265,6 +265,36 @@ mistaken for encryption).
   previously-encrypted credential becomes permanently unrecoverable by
   design; there is no backdoor.
 
+## GPU hardware & external LLM providers
+
+Two small, deliberately-scoped pieces toward running AI/GPU workloads on
+top of this platform -- see them as foundation, not a finished AI
+platform feature:
+
+- **GPU hardware tracking**: `HardwareAsset` has `gpu_model`/`gpu_count`/
+  `gpu_memory_gb` -- set manually via `PATCH /hardware-assets/{id}`
+  (standard Ironic/BMH inspection has no dedicated GPU field, unlike
+  CPU/memory, so this isn't auto-populated the way NIC/disk info is).
+  `GET /hardware-assets?has_gpu=true` filters on it. A worker pool only
+  gets `gpu=true`/`gpu-model=<model>` node labels in its rendered CAPI
+  manifest when *every* asset in that pool has a GPU -- a mixed pool
+  can't honestly claim that for all its nodes. Install the
+  `nvidia-gpu-operator` addon on a cluster with GPU-bearing nodes to get
+  a schedulable `nvidia.com/gpu` resource automatically.
+- **External LLM provider credentials** (`/llm-providers`): stores an API
+  key for OpenAI, DeepSeek, Qwen (DashScope), Doubao (Volcengine Ark), or
+  any other OpenAI-compatible endpoint -- encrypted the same way BMC
+  passwords are (`BMC_ENCRYPTION_KEY`, see above; the setting name is a
+  historical accident, it's a general-purpose credential key). Includes
+  a connectivity test (a real 1-token chat completion, not just a ping)
+  that never exposes the key back to the caller.
+
+What this deliberately does NOT include yet: actually deploying vLLM (or
+any inference workload) onto a target cluster, or a chat UI. Those need
+a way to reach a *target* cluster's own Kubernetes API (this backend has
+so far only ever talked to the *management* cluster) -- a real
+architectural piece, not just more CRUD, and not built yet.
+
 ## Tests
 
 ```bash
