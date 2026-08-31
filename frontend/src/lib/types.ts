@@ -196,3 +196,18 @@ export interface LLMProviderTestResult {
   model_used: string | null;
   error: string | null;
 }
+
+export type AIWorkloadStatus = "pending" | "deploying" | "running" | "failed" | "deleted";
+
+export interface AIWorkload {
+  id: string;
+  name: string;
+  cluster_id: string;
+  namespace: string;
+  model_id: string;
+  gpu_count: number;
+  replicas: number;
+  status: AIWorkloadStatus;
+  error_message: string | null;
+  service_endpoint: string | null;
+}

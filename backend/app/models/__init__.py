@@ -11,6 +11,7 @@ exactly the kind of thing that turns into a confusing "no such table"
 error the day someone wires up local Machine persistence. Import order
 should never be load-bearing for schema completeness.
 """
+from app.models.ai_workload import AIWorkload
 from app.models.baremetalhost import BareMetalHost
 from app.models.cluster import Cluster
 from app.models.deployment import Deployment
@@ -21,6 +22,7 @@ from app.models.pool_assignment import NodePoolAssignment
 from app.models.user import User
 
 __all__ = [
+    "AIWorkload",
     "BareMetalHost",
     "Cluster",
     "Deployment",

@@ -1,0 +1,94 @@
+# vLLM OpenAI-compatible inference server -- applied directly to the
+# TARGET cluster (not the management cluster CAPI manifests are applied
+# to), via services/target_cluster.py's isolated per-cluster client.
+#
+# Image/args/resource pattern matches vLLM's own official docs (verified
+# against docs.vllm.ai's Kubernetes deployment guide, not guessed) --
+# `vllm/vllm-openai:<tag>`, `nvidia.com/gpu` resource requests/limits,
+# a /dev/shm emptyDir (vLLM needs real shared memory for multi-GPU
+# tensor-parallel communication, the container's default shm is too
+# small), and the model reference passed as a serve argument.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ workload.name }}
+  namespace: {{ workload.namespace }}
+  labels:
+    app: {{ workload.name }}
+    managed-by: metal3-deploy-k8s-backend
+spec:
+  replicas: {{ workload.replicas }}
+  selector:
+    matchLabels:
+      app: {{ workload.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ workload.name }}
+    spec:
+      # Matches the gpu=true label services/asset_planner.py's
+      # build_worker_pool_entry applies to a pool's nodes when every
+      # asset in it actually has a GPU -- without this, the scheduler
+      # has no reason to prefer a GPU node over any other, even though
+      # the resource request below will still force it onto SOME node
+      # that has the GPUs to satisfy it (this just narrows that down to
+      # nodes this platform specifically labeled as GPU nodes, rather
+      # than any node happening to also advertise the resource).
+      nodeSelector:
+        gpu: "true"
+      containers:
+        - name: vllm
+          image: "vllm/vllm-openai:{{ workload.image_tag | default('latest') }}"
+          command: ["vllm", "serve", "{{ workload.model_id }}"]
+{% if workload.extra_args is defined and workload.extra_args %}
+          args:
+{% for arg in workload.extra_args %}
+            - "{{ arg }}"
+{% endfor %}
+{% endif %}
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: "{{ workload.gpu_count }}"
+            requests:
+              nvidia.com/gpu: "{{ workload.gpu_count }}"
+{% if workload.hf_token_secret_name is defined and workload.hf_token_secret_name %}
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ workload.hf_token_secret_name }}
+                  key: token
+{% endif %}
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ workload.shm_size | default('4Gi') }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ workload.name }}
+  namespace: {{ workload.namespace }}
+  labels:
+    app: {{ workload.name }}
+    managed-by: metal3-deploy-k8s-backend
+spec:
+  selector:
+    app: {{ workload.name }}
+  ports:
+    - port: 8000
+      targetPort: 8000
+  # ClusterIP on purpose -- reachable from other pods on the target
+  # cluster (e.g. an AI Agent workload calling its OpenAI-compatible API
+  # at http://{{ workload.name }}.{{ workload.namespace }}.svc.cluster.local:8000/v1),
+  # not from outside it. Exposing this externally is the same problem
+  # this platform already solves generically for any service -- the
+  # apigateway/bgp-lb addons (see services/addon_catalog.py) -- not
+  # something to reinvent per-workload here.
+  type: ClusterIP

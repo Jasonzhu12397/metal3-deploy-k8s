@@ -6,6 +6,7 @@ import {
   Rocket,
   Server,
   ServerCog,
+  Sparkles,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
@@ -17,6 +18,7 @@ const NAV = [
   { to: "/deployments", label: "部署任务", icon: Rocket },
   { to: "/app-catalog", label: "应用目录", icon: Package },
   { to: "/llm-providers", label: "LLM 凭证", icon: Cpu },
+  { to: "/ai-workloads", label: "AI 工作负载", icon: Sparkles },
 ];
 
 export function Sidebar() {

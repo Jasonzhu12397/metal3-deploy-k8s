@@ -1,6 +1,7 @@
 import type {
   AddonCatalogItem,
   AddonToggleResult,
+  AIWorkload,
   BareMetalHostCreate,
   Cluster,
   ClusterCreate,
@@ -150,6 +151,24 @@ export const api = {
     remove: (id: string) => request<void>(`/llm-providers/${id}`, { method: "DELETE" }),
     testConnection: (id: string) =>
       request<LLMProviderTestResult>(`/llm-providers/${id}/test-connection`, { method: "POST" }),
+  },
+
+  aiWorkloads: {
+    list: (clusterId?: string) =>
+      request<AIWorkload[]>(`/ai-workloads${clusterId ? `?cluster_id=${clusterId}` : ""}`),
+    create: (body: {
+      name: string;
+      cluster_id: string;
+      namespace?: string;
+      model_id: string;
+      gpu_count?: number;
+      replicas?: number;
+      image_tag?: string;
+      extra_args?: string[];
+      hf_token_secret_name?: string;
+    }) => request<AIWorkload>("/ai-workloads", { method: "POST", body: json(body) }),
+    redeploy: (id: string) => request<AIWorkload>(`/ai-workloads/${id}/redeploy`, { method: "POST" }),
+    remove: (id: string) => request<void>(`/ai-workloads/${id}`, { method: "DELETE" }),
   },
 
   baremetalHosts: {

@@ -96,6 +96,12 @@ class YamlGeneratorService:
         tmpl = self.env.get_template("network/eph-net-template.yaml.j2")
         return tmpl.render(net=net_spec)
 
+    # ---- AI workloads (applied to a TARGET cluster, not the management
+    # cluster the rest of this module's templates render for) -----------
+    def render_vllm_deployment(self, workload_spec: dict[str, Any]) -> str:
+        tmpl = self.env.get_template("ai/vllm-deployment.yaml.j2")
+        return tmpl.render(workload=workload_spec)
+
     # ---- helpers -------------------------------------------------
     @staticmethod
     def write(content: str, out_path: str) -> str:

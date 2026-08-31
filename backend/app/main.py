@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     addons,
+    ai_workloads,
     auth,
     baremetalhosts,
     bmc,
@@ -63,6 +64,7 @@ app.include_router(hardware_assets.router, prefix=settings.API_V1_PREFIX, depend
 app.include_router(planner.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
 app.include_router(addons.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
 app.include_router(llm_providers.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
+app.include_router(ai_workloads.router, prefix=settings.API_V1_PREFIX, dependencies=authed)
 
 
 @app.get("/")

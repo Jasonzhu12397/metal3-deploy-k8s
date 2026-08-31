@@ -11,6 +11,7 @@ const TITLES: Record<string, string> = {
   "/deployments": "部署任务",
   "/app-catalog": "应用目录",
   "/llm-providers": "LLM 凭证",
+  "/ai-workloads": "AI 工作负载",
 };
 
 async function pingHealth(): Promise<boolean> {

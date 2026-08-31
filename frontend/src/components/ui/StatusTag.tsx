@@ -32,6 +32,9 @@ const TONE_MAP: Record<string, Tone> = {
   waiting_for_control_plane: "processing",
   installing_addons: "processing",
   complete: "success",
+  // AI workloads
+  deploying: "processing",
+  running: "success",
 };
 
 const TONE_STYLES: Record<Tone, string> = {
