@@ -95,11 +95,12 @@ export const api = {
   },
 
   hardwareAssets: {
-    list: (params?: { status?: string; unassigned_only?: boolean; min_memory_gb?: number }) => {
+    list: (params?: { status?: string; unassigned_only?: boolean; min_memory_gb?: number; has_gpu?: boolean }) => {
       const qs = new URLSearchParams();
       if (params?.status) qs.set("status", params.status);
       if (params?.unassigned_only) qs.set("unassigned_only", "true");
       if (params?.min_memory_gb) qs.set("min_memory_gb", String(params.min_memory_gb));
+      if (params?.has_gpu !== undefined) qs.set("has_gpu", String(params.has_gpu));
       const suffix = qs.toString() ? `?${qs}` : "";
       return request<HardwareAsset[]>(`/hardware-assets${suffix}`);
     },

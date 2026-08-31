@@ -121,6 +121,21 @@ class AssetPlannerService:
 
         node_labels = [f"isolation-interrupts={str(rep_assignment.isolation_interrupts).lower()}"]
 
+        # GPU labels only added if EVERY asset in the pool actually has a
+        # GPU -- node_labels apply uniformly to the whole MachineDeployment
+        # (CAPI has no per-node-within-a-pool label mechanism), so a mixed
+        # pool can't honestly claim "gpu=true" for all its nodes. A pool
+        # intended for GPU workloads should only ever contain GPU hardware
+        # in the first place; this just refuses to lie about it if that
+        # wasn't followed.
+        if assets and all(a.gpu_count > 0 for a in assets):
+            node_labels.append("gpu=true")
+            if rep_asset.gpu_model:
+                # K8s label values can't contain spaces -- GPU model names
+                # like "NVIDIA H100 80GB" routinely do.
+                safe_model = rep_asset.gpu_model.replace(" ", "_")
+                node_labels.append(f"gpu-model={safe_model}")
+
         return {
             "name": pool_name,
             "count": len(assets),
@@ -131,6 +146,7 @@ class AssetPlannerService:
             "hugepage_type": rep_assignment.hugepage_type,
             "hugepage_count_1gb": rep_assignment.hugepage_count_1gb,
             "hugepage_count_2mb": rep_assignment.hugepage_count_2mb,
+            "gpu_count_per_node": rep_asset.gpu_count if assets and all(a.gpu_count > 0 for a in assets) else 0,
         }
 
     def build_control_plane_fields(

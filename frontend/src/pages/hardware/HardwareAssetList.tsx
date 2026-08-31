@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, Rows3, ServerCog } from "lucide-react";
+import { Cpu, LayoutGrid, Rows3, ServerCog } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { CoreMap } from "../../components/ui/CoreMap";
@@ -19,18 +19,23 @@ const STATUS_FILTERS: { value: AssetStatus | "all"; label: string }[] = [
 export default function HardwareAssetList() {
   const [view, setView] = useState<"rack" | "table">("rack");
   const [statusFilter, setStatusFilter] = useState<AssetStatus | "all">("all");
+  const [gpuOnly, setGpuOnly] = useState(false);
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
 
   const { data: assets, isLoading } = useQuery({
-    queryKey: ["hardware-assets", statusFilter],
-    queryFn: () => api.hardwareAssets.list(statusFilter === "all" ? undefined : { status: statusFilter }),
+    queryKey: ["hardware-assets", statusFilter, gpuOnly],
+    queryFn: () =>
+      api.hardwareAssets.list({
+        status: statusFilter === "all" ? undefined : statusFilter,
+        has_gpu: gpuOnly ? true : undefined,
+      }),
   });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-[var(--color-ink-muted)]">
-          物理机注册后，Ironic 会自动探测 CPU/内存/网卡/磁盘 —— 点开一台机器同步结果、修正网卡/磁盘角色。
+          物理机注册后，Ironic 会自动探测 CPU/内存/网卡/磁盘 —— 点开一台机器同步结果、修正网卡/磁盘角色。GPU 需要手动补录（标准探测不带 GPU 信息）。
         </p>
         <div className="flex items-center gap-2">
           <div className="flex gap-1 rounded-lg border border-[var(--color-border-strong)] p-0.5">
@@ -48,6 +53,17 @@ export default function HardwareAssetList() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setGpuOnly((v) => !v)}
+            className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+              gpuOnly
+                ? "border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white"
+                : "border-[var(--color-border-strong)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+            }`}
+            title="只看带 GPU 的机器"
+          >
+            <Cpu size={12} /> 仅 GPU
+          </button>
           <div className="flex gap-1 rounded-lg border border-[var(--color-border-strong)] p-0.5">
             <button
               onClick={() => setView("rack")}
@@ -115,11 +131,18 @@ export default function HardwareAssetList() {
                 </span>
                 <span>{a.nics.length} 网卡 · {a.disks.length} 磁盘</span>
               </div>
-              {a.node_pool_name && (
-                <span className="w-fit rounded-full bg-[var(--color-brand-50)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-brand-600)]">
-                  {a.node_pool_name}
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {a.has_gpu && (
+                  <span className="flex items-center gap-1 w-fit rounded-full bg-[var(--color-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-success)]">
+                    <Cpu size={10} /> {a.gpu_count}× {a.gpu_model ?? "GPU"}
+                  </span>
+                )}
+                {a.node_pool_name && (
+                  <span className="w-fit rounded-full bg-[var(--color-brand-50)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-brand-600)]">
+                    {a.node_pool_name}
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>
@@ -132,6 +155,7 @@ export default function HardwareAssetList() {
                 <th className="px-4 py-2.5 font-medium">状态</th>
                 <th className="px-4 py-2.5 font-medium">CPU</th>
                 <th className="px-4 py-2.5 font-medium">内存</th>
+                <th className="px-4 py-2.5 font-medium">GPU</th>
                 <th className="px-4 py-2.5 font-medium">网卡/磁盘</th>
                 <th className="px-4 py-2.5 font-medium">所属池</th>
               </tr>
@@ -151,6 +175,9 @@ export default function HardwareAssetList() {
                     {a.cpu_sockets}×{a.cpu_cores_per_socket}×{a.cpu_threads_per_core}t
                   </td>
                   <td className="px-4 py-3 text-[var(--color-ink-muted)]">{a.memory_gb} GB</td>
+                  <td className="px-4 py-3 text-[var(--color-ink-muted)]">
+                    {a.has_gpu ? `${a.gpu_count}× ${a.gpu_model ?? "GPU"}` : "—"}
+                  </td>
                   <td className="px-4 py-3 text-[var(--color-ink-muted)]">
                     {a.nics.length} / {a.disks.length}
                   </td>

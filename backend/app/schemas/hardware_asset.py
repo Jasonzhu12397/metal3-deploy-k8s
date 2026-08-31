@@ -38,6 +38,9 @@ class HardwareAssetCreate(BaseModel):
     cpu_cores_per_socket: int = 32
     cpu_threads_per_core: int = 2
     memory_gb: int = 0
+    gpu_model: Optional[str] = None
+    gpu_count: int = 0
+    gpu_memory_gb: Optional[int] = None
     nics: list[NicSpec] = Field(default_factory=list)
     disks: list[DiskSpec] = Field(default_factory=list)
     bmc_address: Optional[str] = None
@@ -51,6 +54,9 @@ class HardwareAssetUpdate(BaseModel):
     node_pool_name: Optional[str] = None
     bmc_address: Optional[str] = None
     boot_mac_address: Optional[str] = None
+    gpu_model: Optional[str] = None
+    gpu_count: Optional[int] = None
+    gpu_memory_gb: Optional[int] = None
 
 
 class HardwareAssetRead(BaseModel):
@@ -65,6 +71,10 @@ class HardwareAssetRead(BaseModel):
     cpu_cores_per_socket: int
     cpu_threads_per_core: int
     memory_gb: int
+    gpu_model: Optional[str] = None
+    gpu_count: int = 0
+    gpu_memory_gb: Optional[int] = None
+    has_gpu: bool = False
     nics: list[dict]
     disks: list[dict]
     bmc_address: Optional[str] = None
@@ -99,6 +109,7 @@ class HardwareAssetFilter(BaseModel):
     min_memory_gb: Optional[int] = None
     nic_model_contains: Optional[str] = None
     unassigned_only: bool = False
+    has_gpu: Optional[bool] = None
 
 
 class SyncFromIronicRequest(BaseModel):

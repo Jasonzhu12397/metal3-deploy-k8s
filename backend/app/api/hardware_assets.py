@@ -50,6 +50,7 @@ async def list_assets(
     status: AssetStatus | None = None,
     unassigned_only: bool = False,
     min_memory_gb: int | None = None,
+    has_gpu: bool | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(HardwareAsset)
@@ -59,6 +60,8 @@ async def list_assets(
         query = query.where(HardwareAsset.cluster_id.is_(None))
     if min_memory_gb:
         query = query.where(HardwareAsset.memory_gb >= min_memory_gb)
+    if has_gpu is not None:
+        query = query.where(HardwareAsset.gpu_count > 0 if has_gpu else HardwareAsset.gpu_count == 0)
     result = await db.scalars(query.order_by(HardwareAsset.name))
     return result.all()
 

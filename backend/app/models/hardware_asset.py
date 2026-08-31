@@ -68,6 +68,18 @@ class HardwareAsset(TimestampedModel):
 
     memory_gb: Mapped[int] = mapped_column(Integer, default=0)
 
+    # GPU inventory -- standard Ironic/BMH inspection doesn't enumerate
+    # GPUs the way it does CPU/memory (no dedicated field in
+    # BMH.status.hardware), so unlike those, this isn't auto-populated by
+    # sync-from-ironic. Set manually via PATCH once you know what's in
+    # the box (or extend sync-from-ironic's ironic_inventory payload to
+    # include it later, if your inspection pipeline captures PCI device
+    # info -- the pci_address-per-NIC enrichment path already does
+    # something similar for NICs, see introspection.enrich_with_ironic_inventory).
+    gpu_model: Mapped[str | None] = mapped_column(String(128), nullable=True)  # e.g. "NVIDIA H100 80GB"
+    gpu_count: Mapped[int] = mapped_column(Integer, default=0)
+    gpu_memory_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)  # per-GPU, not total
+
     nics: Mapped[list] = mapped_column(JSON, default=list)
     disks: Mapped[list] = mapped_column(JSON, default=list)
 
@@ -103,3 +115,7 @@ class HardwareAsset(TimestampedModel):
     @property
     def has_bmc_credentials(self) -> bool:
         return self.encrypted_bmc_password is not None
+
+    @property
+    def has_gpu(self) -> bool:
+        return self.gpu_count > 0

@@ -92,6 +92,10 @@ export interface HardwareAsset {
   cpu_cores_per_socket: number;
   cpu_threads_per_core: number;
   memory_gb: number;
+  gpu_model: string | null;
+  gpu_count: number;
+  gpu_memory_gb: number | null;
+  has_gpu: boolean;
   nics: NicSpec[];
   disks: DiskSpec[];
   bmc_address: string | null;

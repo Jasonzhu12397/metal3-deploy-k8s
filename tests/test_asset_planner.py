@@ -34,6 +34,9 @@ def _asset(**kw):
         bmc_address="redfish://192.0.2.10/redfish/v1/Systems/1",
         boot_mac_address="aa:bb:cc:dd:ee:01",
         node_pool_name="pool1",
+        gpu_model=None,
+        gpu_count=0,
+        gpu_memory_gb=None,
         nics=[
             {"pci_address": "0000:02:00.0", "role": "control"},
             {"pci_address": "0000:02:00.1", "role": "control"},

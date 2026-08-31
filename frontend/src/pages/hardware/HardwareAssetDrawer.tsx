@@ -183,6 +183,8 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
             )}
           </section>
 
+          <GpuSection asset={asset} assetId={assetId} />
+
           <BmcCredentialsSection asset={asset} assetId={assetId} />
         </div>
 
@@ -200,6 +202,103 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
         </div>
       </div>
     </div>
+  );
+}
+
+function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [gpuModel, setGpuModel] = useState(asset.gpu_model ?? "");
+  const [gpuCount, setGpuCount] = useState(String(asset.gpu_count ?? 0));
+  const [gpuMemoryGb, setGpuMemoryGb] = useState(asset.gpu_memory_gb ? String(asset.gpu_memory_gb) : "");
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.hardwareAssets.update(assetId, {
+        gpu_model: gpuModel || null,
+        gpu_count: Number(gpuCount) || 0,
+        gpu_memory_gb: gpuMemoryGb ? Number(gpuMemoryGb) : null,
+      }),
+    onSuccess: () => {
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ["hardware-asset", assetId] });
+      qc.invalidateQueries({ queryKey: ["hardware-assets"] });
+    },
+  });
+
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">GPU</h4>
+        {!editing && (
+          <button className="btn-ghost btn !py-1 !text-[11px]" onClick={() => setEditing(true)}>
+            {asset.has_gpu ? "编辑" : "补录"}
+          </button>
+        )}
+      </div>
+
+      {!editing &&
+        (asset.has_gpu ? (
+          <p className="text-xs">
+            {asset.gpu_count}× <span className="mono font-medium">{asset.gpu_model}</span>
+            {asset.gpu_memory_gb && <span className="text-[var(--color-ink-faint)]"> · {asset.gpu_memory_gb}GB/卡</span>}
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--color-ink-faint)]">
+            未录入 —— 标准硬件探测（sync-from-ironic）不包含 GPU 信息，需要手动补录才能把这台机器分到 GPU 节点池。
+          </p>
+        ))}
+
+      {editing && (
+        <form
+          className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveMutation.mutate();
+          }}
+        >
+          <div>
+            <label className="label">GPU 型号</label>
+            <input
+              className="input"
+              placeholder="NVIDIA H100 80GB"
+              value={gpuModel}
+              onChange={(e) => setGpuModel(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label">数量</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={gpuCount}
+                onChange={(e) => setGpuCount(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">单卡显存 (GB)</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={gpuMemoryGb}
+                onChange={(e) => setGpuMemoryGb(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn btn-secondary !py-1 !text-[11px]" onClick={() => setEditing(false)}>
+              取消
+            </button>
+            <button type="submit" className="btn btn-primary !py-1 !text-[11px]" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? "保存中..." : "保存"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 
