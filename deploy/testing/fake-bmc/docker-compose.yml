@@ -1,0 +1,18 @@
+# Standalone compose file for the fake-BMC emulator only -- run this
+# alongside the main project's docker-compose.yml (they're independent;
+# this doesn't need to know about postgres/redis/api/worker at all, it
+# just needs to be reachable from wherever your Ironic/baremetal-operator
+# actually runs).
+services:
+  sushy-fake:
+    build: .
+    ports:
+      - "8001:8000"
+    # Deliberately NOT mounting a volume for sushy-tools' internal state
+    # (default: /tmp/sushy-emulator inside the container) -- every
+    # `docker compose up` should start from a clean set of fake systems
+    # exactly matching sushy-fake.conf, not accumulate stale state from
+    # previous runs. If you want systems to survive a container restart,
+    # add a volume for /tmp/sushy-emulator deliberately, knowing that's
+    # the tradeoff.
+    restart: unless-stopped

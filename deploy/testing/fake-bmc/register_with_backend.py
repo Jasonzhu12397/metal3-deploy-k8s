@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-Takes the test_nodes.json produced by create_test_nodes.py and registers
-each virtual node as a real BareMetalHost through this project's actual
-API -- POST /api/v1/auth/login, then POST /api/v1/baremetalhosts per
-node, exactly the same calls a human would make (or the frontend does).
-This is the piece that makes the exercise "test the whole project", not
-just "I have some VMs now": from here on, Ironic/baremetal-operator on
-your management cluster take over exactly as they would for a real
-physical server.
+Takes the test_nodes.json produced by generate_fake_nodes.py and
+registers each fake BMC as a real BareMetalHost through this project's
+actual API -- POST /api/v1/auth/login, then POST /api/v1/baremetalhosts
+per node, exactly the same calls a human would make (or the frontend
+does). From here on, Ironic/baremetal-operator on your management
+cluster manage these fake systems through the exact same Redfish calls
+they'd make against real hardware.
 
-Unlike create_test_nodes.py, THIS script's HTTP-calling logic has been
-tested against a real (locally-mocked-K8s) instance of the backend --
-see tests/test_dev_vm_bmc_registration.py in the project root. What
-hasn't been tested here is the actual libvirt/sushy-tools side, since
-this sandbox has neither.
+This exact script (same code, just the node source differs) is shared
+with deploy/testing/vm-bmc/, which discovers nodes via real libvirt VMs
+instead of sushy-tools' --fake driver -- both produce the same
+test_nodes.json shape, so this file doesn't care which one produced it.
+
+Unlike generate_fake_nodes.py's sushy-tools side (verified live in this
+sandbox -- see README.md), the actual registration HTTP-calling logic
+here has its own dedicated test:
+tests/test_dev_vm_bmc_registration.py.
 """
 from __future__ import annotations
 

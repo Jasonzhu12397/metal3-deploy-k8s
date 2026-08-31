@@ -117,7 +117,7 @@ def main() -> None:
         print(f"defining {name} (mac={mac})...", file=sys.stderr)
         define_vm(name, args.ram_mb, args.vcpus, args.disk_gb, args.network, args.pool, mac)
         uuid, confirmed_mac = get_domain_uuid_and_mac(name)
-        nodes.append({"name": name, "libvirt_uuid": uuid, "boot_mac_address": confirmed_mac})
+        nodes.append({"name": name, "redfish_uuid": uuid, "boot_mac_address": confirmed_mac})
         print(f"  -> defined, libvirt uuid={uuid}", file=sys.stderr)
 
     Path(args.out).write_text(json.dumps(nodes, indent=2))

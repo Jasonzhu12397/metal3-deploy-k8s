@@ -18,7 +18,8 @@ any *external* deployment. In-cluster sidesteps that entirely.
 | `serviceaccount.yaml` | Identity the pods run as |
 | `rbac.yaml` | Role + RoleBinding, scoped to exactly the API groups/kinds this code calls (BareMetalHost, Cluster API core + Metal3/OpenStack/vSphere/KubeVirt infrastructure providers, Secrets) -- not a blanket `edit`/`cluster-admin` grant |
 | `configmap.yaml` | Non-secret settings |
-| `secret.yaml.example` | Template for `SECRET_KEY`/`ADMIN_PASSWORD`/`DATABASE_URL`/etc -- copy to `secret.yaml`, fill in real values, never commit it (already gitignored) |
+| `secret.yaml.example` | Template for `SECRET_KEY`/`ADMIN_PASSWORD`/`DATABASE_URL`/etc -- `generate-secret.sh` fills this in for you |
+| `generate-secret.sh` | Generates `secret.yaml` from the template with real, random `SECRET_KEY`/`BMC_ENCRYPTION_KEY`/`POSTGRES_PASSWORD` values -- nothing to hand-type or think up |
 | `deployment-api.yaml` | The FastAPI service + its ClusterIP Service |
 | `deployment-worker.yaml` | The Celery worker (same image, different command) |
 | `postgres.yaml` / `redis.yaml` | Optional dev-grade fallback if you don't already have managed Postgres/Redis reachable from this cluster |
@@ -49,8 +50,7 @@ the worker).
 
 ```bash
 kubectl apply -k deploy/k8s/          # namespace, RBAC, configmap, deployments
-cp deploy/k8s/secret.yaml.example deploy/k8s/secret.yaml
-# edit deploy/k8s/secret.yaml with real values
+./deploy/k8s/generate-secret.sh       # writes secret.yaml with real, random secrets already filled in
 kubectl apply -f deploy/k8s/secret.yaml
 kubectl rollout restart deployment/metal3-deploy-api deployment/metal3-deploy-worker -n metal3
 ```

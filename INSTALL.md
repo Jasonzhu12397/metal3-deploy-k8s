@@ -259,9 +259,12 @@ docker compose down -v   # -v 会连数据卷一起删，postgres 数据也没�
 
 ## 8.5 没有真实物理机，想测试完整流程怎么办
 
-用虚拟机模拟——不是随便建几台 VM 那么简单，是用 [sushy-tools](https://opendev.org/openstack/sushy-tools) 把虚拟机包装成真正的 Redfish BMC，让 Ironic 像操作真实 iDRAC/iLO 一样操作它，走完整条注册-探测-部署链路。这跟 metal3-io 官方自己测试用的方法（`metal3-dev-env`）是一回事。
+两条路，看你的环境有没有嵌套虚拟化：
 
-详细步骤见 `deploy/testing/vm-bmc/README.md`——这套东西需要 Linux + KVM，如果你是在 Hyper-V 的 Linux VM 里跑（比如现在这台 `ccdadm`），要先在 Windows 主机上给这台 VM 开嵌套虚拟化，文档里写了具体命令。
+- **`deploy/testing/fake-bmc/`（推荐，不需要 KVM/嵌套虚拟化）**——用 [sushy-tools](https://opendev.org/openstack/sushy-tools) 的 `--fake` 驱动模式，一个轻量容器直接在内存里模拟 N 台服务器的开关机/PXE 状态，不需要背后真的有虚拟机。云主机（腾讯云/阿里云这类共享云主机大多不支持嵌套虚拟化）、Hyper-V/VMware 里开不了嵌套虚拟化的场景，用这条路。局限是不会真的装系统，但注册/探测/开关机这套状态机能完整走一遍，测这个项目本身的代码/UI 对不对已经够用。详细步骤见 `deploy/testing/fake-bmc/README.md`。
+- **`deploy/testing/vm-bmc/`（需要 Linux + KVM）**——用真实 libvirt 虚拟机，能看到真实系统被装起来，但需要嵌套虚拟化。如果你是在 Hyper-V 的 Linux VM 里跑，要先在 Windows 主机上给这台 VM 开嵌套虚拟化，文档里写了具体命令。详细步骤见 `deploy/testing/vm-bmc/README.md`。
+
+两条路背后都是同一个 Redfish 模拟器（sushy-tools），都跟 metal3-io 官方自己测试用的方法（`metal3-dev-env`）是一回事，区别只是要不要真的起虚拟机。
 
 ---
 

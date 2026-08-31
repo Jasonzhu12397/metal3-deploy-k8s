@@ -38,7 +38,7 @@ def test_login_posts_correct_payload_and_returns_token():
 
 
 def test_register_node_builds_correct_bmc_address_and_payload():
-    node = {"name": "metal3-test-node-01", "libvirt_uuid": "abc-123-uuid", "boot_mac_address": "52:54:00:aa:bb:cc"}
+    node = {"name": "metal3-test-node-01", "redfish_uuid": "abc-123-uuid", "boot_mac_address": "52:54:00:aa:bb:cc"}
     fake_resp = MagicMock(status_code=201, text="")
 
     with patch("register_with_backend.requests.post", return_value=fake_resp) as mock_post:
@@ -71,7 +71,7 @@ def test_register_node_builds_correct_bmc_address_and_payload():
 
 
 def test_register_node_reports_failure_without_raising():
-    node = {"name": "bad-node", "libvirt_uuid": "x", "boot_mac_address": "52:54:00:00:00:01"}
+    node = {"name": "bad-node", "redfish_uuid": "x", "boot_mac_address": "52:54:00:00:00:01"}
     fake_resp = MagicMock(status_code=422, text='{"detail": "validation error"}')
 
     with patch("register_with_backend.requests.post", return_value=fake_resp):
