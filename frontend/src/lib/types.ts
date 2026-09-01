@@ -5,7 +5,7 @@
 export type ClusterStatus =
   | "pending" | "bootstrapping" | "provisioning" | "ready" | "failed" | "deleting";
 
-export type InfrastructureProvider = "metal3" | "openstack" | "vsphere" | "kubevirt";
+export type InfrastructureProvider = "metal3" | "openstack" | "vsphere" | "kubevirt" | "docker";
 
 export interface Cluster {
   id: string;

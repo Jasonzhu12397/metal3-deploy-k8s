@@ -75,6 +75,7 @@ function CloudPoolsNotice({ provider }: { provider: string }) {
         {provider === "openstack" && "OpenStack 集群的 worker 池（名称/数量/flavor/image）是建集群时直接声明的，不需要（也没有）物理硬件可选。"}
         {provider === "vsphere" && "vSphere 集群的 worker 池（名称/数量/flavor/VM 模板）是建集群时直接声明的，不需要（也没有）物理硬件可选。"}
         {provider === "kubevirt" && "KubeVirt 集群的 worker 池（名称/数量/flavor/DataVolume）是建集群时直接声明的，VM 跑在装了 KubeVirt 的管理集群里，不需要单独的物理硬件。"}
+        {provider === "docker" && "Docker（CAPD）集群的每个节点就是管理集群上的一个容器，不需要 flavor/image，也没有物理硬件可选——这是测试用途的 provider，不建议用于生产。"}
         {" "}要改 worker 池配置，目前需要重建集群；直接去"生成的清单"标签页看渲染结果，或者去"部署"标签页发起部署。
       </p>
     </div>

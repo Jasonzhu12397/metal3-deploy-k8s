@@ -1,0 +1,148 @@
+{# Cluster API Provider Docker (CAPD) target-cluster manifests.
+
+   CAPD is the ONLY infrastructure provider here that doesn't need real
+   infra at all -- it runs each "machine" as a container (using
+   kindest/node images, the same mechanism kind itself uses), on the
+   SAME Docker daemon the management cluster's own containers run on.
+   No physical hosts, no cloud account, no VMware/OpenStack credentials.
+
+   This is explicitly a development/testing provider, not a production
+   one -- that's not this platform's opinion, it's upstream Cluster API's
+   own documented position on CAPD. Use it to prove the whole pipeline
+   (this backend -> CAPI manifests -> a real, working Kubernetes API
+   server you can kubectl into) works end to end without needing
+   hardware, then use metal3/openstack/vsphere/kubevirt for anything
+   real.
+
+   Prerequisites this platform does NOT set up for you (same category as
+   OpenStack cloud credentials or vSphere connection info for those
+   providers): CAPD's own controller must already be installed on the
+   management cluster (`clusterctl init --infrastructure docker`), and a
+   Docker network named "kind" must exist on the host running the
+   management cluster's Docker daemon:
+     docker network create kind --opt com.docker.network.bridge.enable_ip_masquerade=true
+   CAPD uses that network for the HAProxy load-balancer container it
+   creates per cluster.
+
+   Unlike Metal3Cluster/OpenStackCluster/VSphereCluster, DockerCluster
+   doesn't take a controlPlaneEndpoint -- CAPD manages its own
+   load-balancer container and fills that in itself once the cluster
+   exists, which is also why cluster.control_plane_endpoint is never
+   referenced anywhere in this file. #}
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [{{ cluster.pod_cidr | default('192.168.0.0/16') }}]
+    services:
+      cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: {{ cluster.name }}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: DockerCluster
+    name: {{ cluster.name }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerCluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachineTemplate
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      extraMounts:
+        - containerPath: /var/run/docker.sock
+          hostPath: /var/run/docker.sock
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  replicas: {{ cluster.control_plane_count | default(1) }}
+  version: {{ cluster.k8s_version | default('v1.29.0') }}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: DockerMachineTemplate
+      name: {{ cluster.name }}-control-plane
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs: ["localhost", "127.0.0.1", "0.0.0.0"]
+{% if cluster.allow_workloads_on_control_plane | default(true) %}
+    postKubeadmCommands:
+      # Default true here (unlike every other provider, where it
+      # defaults false) -- a single-node CAPD "cluster" whose only node
+      # can't run workloads defeats the entire point of a quick
+      # does-this-actually-work smoke test.
+      - "kubectl --kubeconfig /etc/kubernetes/admin.conf taint node $(hostname) node-role.kubernetes.io/control-plane- --overwrite || true"
+{% endif %}
+{% for pool in cluster.worker_pools %}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachineTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      extraMounts:
+        - containerPath: /var/run/docker.sock
+          hostPath: /var/run/docker.sock
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+{% if pool.node_labels %}
+            node-labels: "{{ pool.node_labels | join(',') }}"
+{% endif %}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterName: {{ cluster.name }}
+  replicas: {{ pool.count }}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: {{ cluster.name }}
+      version: {{ cluster.k8s_version | default('v1.29.0') }}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: {{ cluster.name }}-{{ pool.name }}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: DockerMachineTemplate
+        name: {{ cluster.name }}-{{ pool.name }}
+{% endfor %}

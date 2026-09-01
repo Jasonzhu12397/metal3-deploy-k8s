@@ -107,6 +107,7 @@ const PROVIDERS: { value: NonNullable<ClusterCreate["infrastructure_provider"]>;
   { value: "openstack", label: "OpenStack（CAPO）", hint: "VM 跑在现有 OpenStack 云上，按 flavor/image 声明" },
   { value: "vsphere", label: "vSphere（CAPV）", hint: "VM 跑在 vCenter 上，按 flavor/image（VM 模板）声明" },
   { value: "kubevirt", label: "KubeVirt（CAPK，通用 KVM）", hint: "VM 作为 KubeVirt VirtualMachine 跑在一个已装 KubeVirt 的管理集群里" },
+  { value: "docker", label: "Docker（CAPD，测试用）", hint: "每个节点就是一个容器，不需要任何真实基础设施——用来验证部署流程本身，不要用于生产" },
 ];
 
 function CreateClusterModal({ onClose }: { onClose: () => void }) {
@@ -208,7 +209,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
           />
         </div>
 
-        {isCloud && (
+        {isCloud && form.infrastructure_provider !== "docker" && (
           <>
             <div className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
               <div>

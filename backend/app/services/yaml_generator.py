@@ -33,6 +33,7 @@ PROVIDER_TEMPLATES = {
     "openstack": "capi/providers/openstack.yaml.j2",
     "vsphere": "capi/providers/vsphere.yaml.j2",
     "kubevirt": "capi/providers/kubevirt.yaml.j2",
+    "docker": "capi/providers/docker.yaml.j2",
 }
 
 # Every cloud provider template dot-accesses its own config sub-dict

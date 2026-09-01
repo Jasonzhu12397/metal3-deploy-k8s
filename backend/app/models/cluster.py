@@ -35,12 +35,22 @@ class InfrastructureProvider(str, enum.Enum):
         KubeVirt itself runs on top of libvirt/QEMU-KVM, so anything that
         can host a KubeVirt-enabled cluster (bare metal or virtualized)
         works as the substrate.
+    DOCKER: Cluster API Provider Docker (CAPD) -- each "machine" is a
+        container (kindest/node images) on the management cluster's own
+        Docker daemon. No physical hosts, no cloud account, no VMware.
+        Upstream Cluster API's own explicitly-documented position: this
+        is a development/testing provider, not a production one. Its
+        entire purpose here is proving the pipeline (this backend -> CAPI
+        manifests -> a real, reachable Kubernetes API server) works
+        end to end without needing real infrastructure -- see
+        deploy/testing/capd-quickstart/README.md.
     """
 
     METAL3 = "metal3"
     OPENSTACK = "openstack"
     VSPHERE = "vsphere"
     KUBEVIRT = "kubevirt"
+    DOCKER = "docker"
 
 
 class Cluster(TimestampedModel):

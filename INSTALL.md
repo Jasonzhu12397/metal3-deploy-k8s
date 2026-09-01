@@ -280,12 +280,13 @@ docker compose down -v   # -v 会连数据卷一起删，postgres 数据也没�
 
 ## 8.5 没有真实物理机，想测试完整流程怎么办
 
-两条路，看你的环境有没有嵌套虚拟化：
+三条路：
 
-- **`deploy/testing/fake-bmc/`（推荐，不需要 KVM/嵌套虚拟化）**——用 [sushy-tools](https://opendev.org/openstack/sushy-tools) 的 `--fake` 驱动模式，一个轻量容器直接在内存里模拟 N 台服务器的开关机/PXE 状态，不需要背后真的有虚拟机。云主机（腾讯云/阿里云这类共享云主机大多不支持嵌套虚拟化）、Hyper-V/VMware 里开不了嵌套虚拟化的场景，用这条路。局限是不会真的装系统，但注册/探测/开关机这套状态机能完整走一遍，测这个项目本身的代码/UI 对不对已经够用。详细步骤见 `deploy/testing/fake-bmc/README.md`。
-- **`deploy/testing/vm-bmc/`（需要 Linux + KVM）**——用真实 libvirt 虚拟机，能看到真实系统被装起来，但需要嵌套虚拟化。如果你是在 Hyper-V 的 Linux VM 里跑，要先在 Windows 主机上给这台 VM 开嵌套虚拟化，文档里写了具体命令。详细步骤见 `deploy/testing/vm-bmc/README.md`。
+- **`deploy/testing/capd-quickstart/`（想看到一个真实、可以 `kubectl get nodes` 的集群，最推荐）**——用 [Cluster API Provider Docker（CAPD）](https://cluster-api.sigs.k8s.io/)，Cluster API 项目官方自己维护的测试用 provider，每个节点就是管理集群上的一个容器。跟下面两条路不一样的地方：这条路走的是这个项目**真实的 API**（建集群、触发部署、等它跑完），最后拿到一个真正能用的 Kubernetes 集群，不只是验证注册流程。只需要 Docker，不需要嵌套虚拟化。官方明确这是开发/测试用途，不建议生产使用。详细步骤见 `deploy/testing/capd-quickstart/README.md`。
+- **`deploy/testing/fake-bmc/`（不需要 KVM/嵌套虚拟化）**——用 [sushy-tools](https://opendev.org/openstack/sushy-tools) 的 `--fake` 驱动模式，一个轻量容器直接在内存里模拟 N 台服务器的开关机/PXE 状态，不需要背后真的有虚拟机。云主机（腾讯云/阿里云这类共享云主机大多不支持嵌套虚拟化）、Hyper-V/VMware 里开不了嵌套虚拟化的场景，用这条路。局限是不会真的装系统，但注册/探测/开关机这套状态机能完整走一遍，测这个项目本身的代码/UI 对不对已经够用。详细步骤见 `deploy/testing/fake-bmc/README.md`。
+- **`deploy/testing/vm-bmc/`（需要 Linux + KVM）**——用真实 libvirt 虚拟机模拟 Metal3 裸金属场景本身，能看到真实系统被装起来，但需要嵌套虚拟化。如果你是在 Hyper-V 的 Linux VM 里跑，要先在 Windows 主机上给这台 VM 开嵌套虚拟化，文档里写了具体命令。详细步骤见 `deploy/testing/vm-bmc/README.md`。
 
-两条路背后都是同一个 Redfish 模拟器（sushy-tools），都跟 metal3-io 官方自己测试用的方法（`metal3-dev-env`）是一回事，区别只是要不要真的起虚拟机。
+`fake-bmc`/`vm-bmc` 两条路背后都是同一个 Redfish 模拟器（sushy-tools），都跟 metal3-io 官方自己测试用的方法（`metal3-dev-env`）是一回事，验证的是 Metal3/裸金属这条特定路径；`capd-quickstart` 验证的是不挑 provider 的那部分——集群创建、部署编排、CAPI 清单应用——这部分逻辑在 metal3/openstack/vsphere/kubevirt/docker 之间是共享的。
 
 ---
 
