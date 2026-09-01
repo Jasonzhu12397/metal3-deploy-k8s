@@ -9,19 +9,21 @@ import {
   Sparkles,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { useLanguage } from "../../lib/i18n";
 
 const NAV = [
-  { to: "/", label: "概览", icon: LayoutGrid, end: true },
-  { to: "/clusters", label: "集群管理", icon: Boxes },
-  { to: "/hardware-assets", label: "硬件资产", icon: ServerCog },
-  { to: "/baremetal-hosts", label: "裸金属主机", icon: Server },
-  { to: "/deployments", label: "部署任务", icon: Rocket },
-  { to: "/app-catalog", label: "应用目录", icon: Package },
-  { to: "/llm-providers", label: "LLM 凭证", icon: Cpu },
-  { to: "/ai-workloads", label: "AI 工作负载", icon: Sparkles },
+  { to: "/", key: "nav.overview" as const, icon: LayoutGrid, end: true },
+  { to: "/clusters", key: "nav.clusters" as const, icon: Boxes },
+  { to: "/hardware-assets", key: "nav.hardwareAssets" as const, icon: ServerCog },
+  { to: "/baremetal-hosts", key: "nav.baremetalHosts" as const, icon: Server },
+  { to: "/deployments", key: "nav.deployments" as const, icon: Rocket },
+  { to: "/app-catalog", key: "nav.appCatalog" as const, icon: Package },
+  { to: "/llm-providers", key: "nav.llmProviders" as const, icon: Cpu },
+  { to: "/ai-workloads", key: "nav.aiWorkloads" as const, icon: Sparkles },
 ];
 
 export function Sidebar() {
+  const { t } = useLanguage();
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col bg-[var(--color-navy-900)]">
       <div className="flex items-center gap-2.5 px-5 py-5">
@@ -29,13 +31,13 @@ export function Sidebar() {
           M3
         </div>
         <div className="leading-tight">
-          <div className="text-[13.5px] font-bold text-white">Metal3 控制台</div>
-          <div className="text-[11px] text-[#7b86a8]">Bare Metal &amp; K8s</div>
+          <div className="text-[13.5px] font-bold text-white">{t("app.name")}</div>
+          <div className="text-[11px] text-[#7b86a8]">{t("sidebar.tagline")}</div>
         </div>
       </div>
 
       <nav className="flex flex-col gap-1 px-3">
-        {NAV.map(({ to, label, icon: Icon, end }) => (
+        {NAV.map(({ to, key, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -43,13 +45,13 @@ export function Sidebar() {
             className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
           >
             <Icon size={16} strokeWidth={2} />
-            {label}
+            {t(key)}
           </NavLink>
         ))}
       </nav>
 
       <div className="mt-auto px-5 py-4 text-[11px] text-[#5b6488]">
-        基于 metal3-io + Cluster API
+        metal3-io + Cluster API
       </div>
     </aside>
   );

@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import type { ReactNode } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { LanguageProvider } from "./lib/i18n";
 import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import ClusterList from "./pages/clusters/ClusterList";
@@ -34,32 +35,34 @@ function RequireAuth({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              element={
-                <RequireAuth>
-                  <AppShell />
-                </RequireAuth>
-              }
-            >
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/clusters" element={<ClusterList />} />
-              <Route path="/clusters/:id" element={<ClusterDetail />} />
-              <Route path="/hardware-assets" element={<HardwareAssetList />} />
-              <Route path="/baremetal-hosts" element={<BareMetalHostList />} />
-              <Route path="/deployments" element={<DeploymentList />} />
-              <Route path="/deployments/:id" element={<DeploymentDetail />} />
-              <Route path="/app-catalog" element={<AppCatalog />} />
-              <Route path="/llm-providers" element={<LLMProviders />} />
-              <Route path="/ai-workloads" element={<AIWorkloads />} />
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                element={
+                  <RequireAuth>
+                    <AppShell />
+                  </RequireAuth>
+                }
+              >
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/clusters" element={<ClusterList />} />
+                <Route path="/clusters/:id" element={<ClusterDetail />} />
+                <Route path="/hardware-assets" element={<HardwareAssetList />} />
+                <Route path="/baremetal-hosts" element={<BareMetalHostList />} />
+                <Route path="/deployments" element={<DeploymentList />} />
+                <Route path="/deployments/:id" element={<DeploymentDetail />} />
+                <Route path="/app-catalog" element={<AppCatalog />} />
+                <Route path="/llm-providers" element={<LLMProviders />} />
+                <Route path="/ai-workloads" element={<AIWorkloads />} />
+                <Route path="*" element={<NotFound />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

@@ -1,17 +1,20 @@
-import { LogOut, RefreshCw, User } from "lucide-react";
+import { Languages, LogOut, RefreshCw, User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
+import { useLanguage } from "../../lib/i18n";
 
-const TITLES: Record<string, string> = {
-  "/": "概览",
-  "/clusters": "集群管理",
-  "/hardware-assets": "硬件资产",
-  "/baremetal-hosts": "裸金属主机",
-  "/deployments": "部署任务",
-  "/app-catalog": "应用目录",
-  "/llm-providers": "LLM 凭证",
-  "/ai-workloads": "AI 工作负载",
+type TranslationKey = Parameters<ReturnType<typeof useLanguage>["t"]>[0];
+
+const TITLE_KEYS: Record<string, TranslationKey> = {
+  "/": "nav.overview",
+  "/clusters": "nav.clusters",
+  "/hardware-assets": "nav.hardwareAssets",
+  "/baremetal-hosts": "nav.baremetalHosts",
+  "/deployments": "nav.deployments",
+  "/app-catalog": "nav.appCatalog",
+  "/llm-providers": "nav.llmProviders",
+  "/ai-workloads": "nav.aiWorkloads",
 };
 
 async function pingHealth(): Promise<boolean> {
@@ -27,8 +30,10 @@ export function Topbar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { username, logout } = useAuth();
+  const { t, toggleLang } = useLanguage();
   const segment = "/" + (pathname.split("/")[1] ?? "");
-  const title = TITLES[segment] ?? TITLES[pathname] ?? "详情";
+  const titleKey = TITLE_KEYS[segment] ?? TITLE_KEYS[pathname];
+  const title = titleKey ? t(titleKey) : t("topbar.title.detail");
 
   const { data: healthy, refetch, isFetching } = useQuery({
     queryKey: ["health"],
@@ -44,14 +49,23 @@ export function Topbar() {
           <span
             className={`h-1.5 w-1.5 rounded-full ${healthy ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]"}`}
           />
-          API {healthy ? "在线" : "离线"}
+          {healthy ? t("topbar.apiOnline") : t("topbar.apiOffline")}
         </div>
         <button
           onClick={() => refetch()}
           className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-ink-muted)] hover:bg-[var(--color-idle-soft)]"
-          aria-label="刷新"
+          aria-label={t("topbar.refresh")}
+          title={t("topbar.refresh")}
         >
           <RefreshCw size={14} className={isFetching ? "animate-spin" : ""} />
+        </button>
+        <button
+          onClick={toggleLang}
+          className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-[var(--color-ink-muted)] hover:bg-[var(--color-idle-soft)]"
+          aria-label={t("lang.toggle")}
+          title={t("lang.toggle")}
+        >
+          <Languages size={14} /> {t("lang.toggle")}
         </button>
         <div className="flex items-center gap-2 border-l border-[var(--color-border)] pl-4">
           <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink-muted)]">
@@ -63,8 +77,8 @@ export function Topbar() {
               navigate("/login", { replace: true });
             }}
             className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-ink-muted)] hover:bg-[var(--color-idle-soft)]"
-            aria-label="退出登录"
-            title="退出登录"
+            aria-label={t("topbar.logout")}
+            title={t("topbar.logout")}
           >
             <LogOut size={14} />
           </button>

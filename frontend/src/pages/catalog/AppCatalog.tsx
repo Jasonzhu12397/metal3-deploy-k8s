@@ -1,12 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Package, Plus } from "lucide-react";
-import { useState } from "react";
+import { Check, Package, Plus, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { useLanguage } from "../../lib/i18n";
+import { ADDON_ICONS, DEFAULT_ADDON_ICON } from "../../lib/addonIcons";
+import type { AddonCatalogItem } from "../../lib/types";
+
+type TranslationKey = Parameters<ReturnType<typeof useLanguage>["t"]>[0];
+
+const CATEGORY_LABEL_KEYS: Record<string, TranslationKey> = {
+  networking: "catalog.category.networking",
+  storage: "catalog.category.storage",
+  platform: "catalog.category.platform",
+  observability: "catalog.category.observability",
+  compute: "catalog.category.compute",
+};
 
 export default function AppCatalog() {
+  const { t } = useLanguage();
   const qc = useQueryClient();
-  const [category, setCategory] = useState("全部");
+  const [category, setCategory] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [clusterId, setClusterId] = useState<string>("");
 
   const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.clusters.list });
@@ -29,17 +44,34 @@ export default function AppCatalog() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["addons", clusterId] }),
   });
 
-  const categories = ["全部", ...Array.from(new Set((items ?? []).map((c) => c.category)))];
-  const filtered = (items ?? []).filter((c) => category === "全部" || c.category === category);
+  const localizedName = (entry: AddonCatalogItem) => t(`addon.${entry.name}.name` as TranslationKey);
+  const localizedDesc = (entry: AddonCatalogItem) => t(`addon.${entry.name}.desc` as TranslationKey);
+
+  const categories = useMemo(() => {
+    const present = Array.from(new Set((items ?? []).map((c) => c.category)));
+    return ["all", ...present];
+  }, [items]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (items ?? []).filter((c) => {
+      if (category !== "all" && c.category !== category) return false;
+      if (!q) return true;
+      return (
+        localizedName(c).toLowerCase().includes(q) ||
+        localizedDesc(c).toLowerCase().includes(q) ||
+        c.name.toLowerCase().includes(q)
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, category, search, t]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          这套平台常用的组件目录，对应集群配置里的 <code className="mono">addons:</code> 段。选一个集群可以直接在这里启用/停用。
-        </p>
-        <select className="input !w-56" value={clusterId} onChange={(e) => setClusterId(e.target.value)}>
-          <option value="">仅浏览目录（不关联集群）</option>
+        <p className="max-w-2xl text-xs text-[var(--color-ink-muted)]">{t("catalog.subtitle")}</p>
+        <select className="input !w-64" value={clusterId} onChange={(e) => setClusterId(e.target.value)}>
+          <option value="">{t("catalog.selectClusterPlaceholder")}</option>
           {(clusters ?? []).map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -48,71 +80,94 @@ export default function AppCatalog() {
         </select>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {categories.map((c) => (
-          <button
-            key={c}
-            onClick={() => setCategory(c)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-              category === c
-                ? "bg-[var(--color-brand-500)] text-white"
-                : "bg-[var(--color-idle-soft)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-faint)]" />
+          <input
+            className="input !pl-9"
+            placeholder={t("catalog.search")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {categories.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                category === c
+                  ? "bg-[var(--color-brand-500)] text-white"
+                  : "bg-[var(--color-idle-soft)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+              }`}
+            >
+              {c === "all" ? t("catalog.allCategories") : t(CATEGORY_LABEL_KEYS[c] ?? "catalog.category.platform")}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {!isLoading && items && (
+        <p className="text-[11px] text-[var(--color-ink-faint)]">{t("catalog.resultsCount", { count: filtered.length })}</p>
+      )}
+
       {isLoading ? (
-        <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>
+        <p className="text-xs text-[var(--color-ink-faint)]">{t("catalog.loading")}</p>
       ) : filtered.length === 0 ? (
         <div className="card">
-          <EmptyState icon={Package} title="目录是空的" />
+          <EmptyState icon={Package} title={t("catalog.empty")} hint={t("catalog.emptyHint")} />
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((entry) => (
-            <div key={entry.name} className="card flex flex-col gap-3 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-navy-900)] text-[10px] font-bold text-white">
-                    {entry.icon}
+          {filtered.map((entry) => {
+            const { icon: Icon, color } = ADDON_ICONS[entry.name] ?? DEFAULT_ADDON_ICON;
+            return (
+              <div key={entry.name} className="card flex flex-col gap-3 p-4 transition hover:shadow-md">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
+                      style={{ backgroundColor: color }}
+                    >
+                      <Icon size={20} strokeWidth={2} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold leading-tight">{localizedName(entry)}</div>
+                      <span className="mono text-[10px] text-[var(--color-ink-faint)]">{entry.name}</span>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-bold leading-tight">{entry.display_name}</div>
-                    <span className="mono text-[10px] text-[var(--color-ink-faint)]">{entry.name}</span>
-                  </div>
+                  {clusterId &&
+                    (entry.enabled ? (
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-success-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-success)]">
+                        <Check size={10} /> {t("catalog.installed")}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-[var(--color-idle-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-ink-faint)]">
+                        {t("catalog.notInstalled")}
+                      </span>
+                    ))}
                 </div>
-                {clusterId &&
-                  (entry.enabled ? (
-                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-success-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-success)]">
-                      <Check size={10} /> 已启用
-                    </span>
-                  ) : (
-                    <span className="shrink-0 rounded-full bg-[var(--color-idle-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-ink-faint)]">
-                      未配置
-                    </span>
-                  ))}
+                <p className="line-clamp-4 text-xs leading-relaxed text-[var(--color-ink-muted)]">{localizedDesc(entry)}</p>
+                {clusterId && (
+                  <button
+                    className={entry.enabled ? "btn btn-secondary mt-1" : "btn btn-primary mt-1"}
+                    disabled={enableMutation.isPending || disableMutation.isPending}
+                    onClick={() =>
+                      entry.enabled ? disableMutation.mutate(entry.name) : enableMutation.mutate(entry.name)
+                    }
+                  >
+                    {entry.enabled ? (
+                      t("catalog.uninstall")
+                    ) : (
+                      <>
+                        <Plus size={13} /> {t("catalog.install")}
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
-              <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">{entry.description}</p>
-              {clusterId && (
-                <button
-                  className={entry.enabled ? "btn btn-secondary mt-1" : "btn btn-primary mt-1"}
-                  disabled={enableMutation.isPending || disableMutation.isPending}
-                  onClick={() =>
-                    entry.enabled ? disableMutation.mutate(entry.name) : enableMutation.mutate(entry.name)
-                  }
-                >
-                  {entry.enabled ? "停用" : (
-                    <>
-                      <Plus size={13} /> 启用
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
