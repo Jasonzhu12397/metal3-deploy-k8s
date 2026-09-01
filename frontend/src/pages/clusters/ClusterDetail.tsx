@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileCode2, Layers, Plus, Rocket, Settings2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { CodeBlock } from "../../components/ui/CodeBlock";
@@ -21,6 +21,20 @@ export default function ClusterDetail() {
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("pools");
 
   const { data: cluster } = useQuery({ queryKey: ["cluster", id], queryFn: () => api.clusters.get(id) });
+
+  // Cloud/CAPD-backed clusters (anything not metal3) have nothing
+  // actionable on the "节点池" tab -- no HardwareAsset to pick, just an
+  // explanatory notice (see CloudPoolsNotice below). Landing there by
+  // default made "发起部署" easy to miss entirely: nothing on that first
+  // screen even hints that a different tab has the button. Jump straight
+  // to "部署" for these instead. Runs once per cluster id (not on every
+  // render) so manually switching tabs afterward still works normally.
+  useEffect(() => {
+    if (cluster && cluster.infrastructure_provider !== "metal3") {
+      setTab("deployments");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, cluster?.infrastructure_provider]);
 
   if (!cluster) return <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>;
 
