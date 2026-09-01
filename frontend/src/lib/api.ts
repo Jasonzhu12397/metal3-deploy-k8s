@@ -21,14 +21,58 @@ class ApiError extends Error {
   status: number;
   body: unknown;
   constructor(status: number, body: unknown) {
-    const detail =
-      body && typeof body === "object" && "detail" in body
-        ? String((body as { detail: unknown }).detail)
-        : `HTTP ${status}`;
-    super(detail);
+    super(extractErrorMessage(status, body));
     this.status = status;
     this.body = body;
   }
+}
+
+/** FastAPI's `detail` field isn't always a plain string -- Pydantic
+ * validation failures (422s) come back as a LIST of {msg, loc, ...}
+ * objects, not a string. Blindly doing `String(detail)` on that list
+ * produces the literal text "[object Object]" (JS's default Array/Object
+ * stringification), which is what actually shipped here until someone
+ * hit a real validation error and saw that instead of the message --
+ * this handles both shapes properly instead of guessing detail is
+ * always a string. */
+function extractErrorMessage(status: number, body: unknown): string {
+  if (!body || typeof body !== "object" || !("detail" in body)) {
+    return `HTTP ${status}`;
+  }
+  const detail = (body as { detail: unknown }).detail;
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          const msg = String((item as { msg: unknown }).msg);
+          const loc = "loc" in item ? (item as { loc: unknown }).loc : undefined;
+          const field = Array.isArray(loc) ? loc.filter((p) => p !== "body").join(".") : "";
+          return field ? `${field}: ${msg}` : msg;
+        }
+        return String(item);
+      })
+      .filter(Boolean);
+    if (messages.length > 0) {
+      return messages.join("; ");
+    }
+  }
+
+  if (typeof detail === "object") {
+    // last resort: something structured but not the list-of-{msg} shape
+    // above -- still better than "[object Object]"
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return `HTTP ${status}`;
+    }
+  }
+
+  return `HTTP ${status}`;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

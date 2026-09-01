@@ -46,7 +46,14 @@ class ClusterCreate(BaseModel):
 
     @model_validator(mode="after")
     def _cloud_providers_need_a_machine_spec(self) -> "ClusterCreate":
-        if self.infrastructure_provider == InfrastructureProvider.METAL3:
+        # metal3: machine spec comes from the HardwareAsset assigned to
+        # each pool, not from this form. docker (CAPD): the whole point
+        # is zero external dependencies -- DockerMachineTemplate doesn't
+        # take a flavor/image at all, the node image is derived from the
+        # Kubernetes version instead (see templates/capi/providers/docker.yaml.j2).
+        # Every OTHER provider is a real cloud/VM backend that genuinely
+        # needs these to know what to boot.
+        if self.infrastructure_provider in (InfrastructureProvider.METAL3, InfrastructureProvider.DOCKER):
             return self
         if not self.control_plane_flavor or not self.control_plane_image:
             raise ValueError(
