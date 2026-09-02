@@ -160,6 +160,33 @@ npm run dev        # http://localhost:5173, proxies /api to localhost:8000
 
 Or via docker-compose (see below) at `http://localhost:8080`, reverse-proxied through nginx to the API on the same origin.
 
+### Frontend tests
+
+```bash
+cd frontend
+npm test            # vitest run -- 62 tests across 5 files, one-shot
+npm run test:watch  # same, but re-runs on file change
+```
+
+This didn't exist for most of this project's development -- the backend
+had 90+ pytest tests from early on, but the frontend had zero automated
+coverage, relying entirely on `tsc`'s type-checking plus manual/scripted
+browser verification during each feature that was never saved as a
+permanent, re-runnable test. Coverage so far is deliberately scoped to
+the highest-value targets, not the whole app: `lib/api.ts`'s error-message
+extraction (the literal site of a real shipped bug -- see git history for
+"[object Object]"), `lib/cpu.ts` (numerically cross-checked against
+`cpu_topology.py`'s Python reference values, not just "looks right"),
+`StatusTag` (pins every known status string to its intended color so a
+forgotten new status doesn't silently render as the wrong tone), i18n's
+language-switching behavior, and the create-cluster form's
+provider-conditional field visibility (metal3/openstack/vsphere/kubevirt/
+docker each show different fields -- this is exactly where the
+docker/CAPD flavor-image bug shipped from). Most pages (hardware assets,
+deployments, hosts, LLM providers, AI workloads) still have no frontend
+tests -- extending coverage there follows the same patterns already
+established in `src/**/__tests__/`.
+
 ## Key endpoints
 
 | Method | Path | Purpose |
@@ -301,3 +328,5 @@ architectural piece, not just more CRUD, and not built yet.
 pip install -r backend/requirements.txt pytest httpx aiosqlite ruff
 make test
 ```
+
+Frontend tests are separate -- see "Frontend tests" above (`cd frontend && npm test`).
