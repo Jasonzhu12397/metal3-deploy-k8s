@@ -322,10 +322,83 @@ a way to reach a *target* cluster's own Kubernetes API (this backend has
 so far only ever talked to the *management* cluster) -- a real
 architectural piece, not just more CRUD, and not built yet.
 
+## Known API version debt
+
+Found while adding real-CRD-schema validation (see "Manifest schema
+validation" below), not something anyone previously flagged: this
+project's CAPI templates (`templates/capi/*.j2`, all providers) target
+`cluster.x-k8s.io/v1beta1` for `Cluster`/`MachineDeployment`,
+`controlplane.cluster.x-k8s.io/v1beta1` for `KubeadmControlPlane`, and
+`bootstrap.cluster.x-k8s.io/v1beta1` for `KubeadmConfigTemplate`.
+
+As of Cluster API v1.11.0, `v1beta1` on these types is marked
+`deprecated: true` in the CRD itself, with `v1beta2` now the storage
+version. `v1beta1` is still `served: true` (a real CAPI v1.11.x/v1.12.x
+install will currently still accept manifests at v1beta1 -- confirmed by
+validating this project's actual rendered manifests against the real
+v1.11.0 CRD schema, see `tests/test_manifest_schema_validation.py`), so
+nothing here is currently broken. But it's on a deprecation path, not
+just an older-but-fine version sitting still.
+
+Metal3-specific resources have the same situation one version earlier:
+CAPM3 v1.13.x has moved `Metal3Cluster`/`Metal3MachineTemplate` to
+`v1beta2`; CAPM3 v1.12.x (still "Supported" per Metal3's own version-support
+page) is the last line still on `v1beta1`, which is what this project
+targets.
+
+Migrating to v1beta2 isn't just a version-string find-and-replace --
+CAPI's v1beta2 changed how `infrastructureRef` is expressed (splitting
+the old combined `apiVersion` field into separate `apiGroup` + `kind`),
+so it touches every provider template, not just Metal3's. Not done here
+-- this is scope for a dedicated follow-up, flagged honestly rather than
+silently left for someone to discover the hard way later.
+
+## Manifest schema validation
+
+`tests/test_manifest_schema_validation.py` validates every manifest this
+project actually renders against the REAL upstream `CustomResourceDefinition`
+schemas for Cluster API core + Cluster API Provider Metal3 +
+baremetal-operator (snapshotted in `backend/tests_data/crd_schemas/`,
+see that directory's own README for exactly where they came from and how
+to refresh them) -- not a hand-approximated schema, the actual
+`openAPIV3Schema` a real Kubernetes API server would enforce on
+`kubectl apply`.
+
+This exists because every other test in this project either checks "is
+this valid YAML" or mocks the Kubernetes layer entirely (see "What's
+stubbed vs. real" below) -- neither catches a manifest with the right
+field names and right structure but a value of the wrong *type*, which
+is exactly what a real API server's admission validation rejects. This
+gap was real, not hypothetical: building this test caught an actual bug
+immediately -- `checksum: {{ cluster.image_checksum | default('') }}`
+rendered `checksum: ` (empty) when no checksum was supplied, and YAML
+parses a bare/empty scalar as `null`, not empty string, which the real
+`Metal3MachineTemplate` CRD rejects (`checksum`, when present, must be a
+string; the fix was to only emit the key when there's an actual value,
+matching the `is defined and X` pattern already used elsewhere in these
+templates for the same reason). Also caught, in the same block: the
+default placeholder image URL still referenced a customer-specific
+filename (`EricssonCCD.qcow2`) that an earlier cleanup pass had missed --
+replaced with an unambiguous placeholder.
+
+What this test suite does NOT prove: that a real Ironic/baremetal-operator/CAPM3
+controller would successfully *reconcile* these objects into an actual
+running cluster (that needs real hardware, or the
+`deploy/testing/vm-bmc/`/`deploy/testing/capd-quickstart/` paths -- see
+those directories' own READMEs for what's verified vs. not there), or
+every *semantic* constraint the real controllers enforce beyond
+structural schema validation (e.g. nothing checks that
+`infrastructureRef` points at a `Metal3Cluster` that actually exists --
+that's reconciliation-time logic, not admission-time schema validation).
+What it DOES prove: a real Kubernetes API server's structural admission
+check would accept these objects, which is categorically stronger than
+"this parses as YAML" and is exactly the gap that let the checksum bug
+above ship unnoticed.
+
 ## Tests
 
 ```bash
-pip install -r backend/requirements.txt pytest httpx aiosqlite ruff
+pip install -r backend/requirements.txt pytest httpx aiosqlite ruff jsonschema
 make test
 ```
 

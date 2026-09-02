@@ -46,8 +46,16 @@ spec:
   template:
     spec:
       image:
-        url: {{ cluster.image_url | default('http://images.local/EricssonCCD.qcow2') }}
-        checksum: {{ cluster.image_checksum | default('') }}
+        url: {{ cluster.image_url | default('http://images.local/your-os-image.qcow2') }}
+{% if cluster.image_checksum is defined and cluster.image_checksum %}
+        checksum: {{ cluster.image_checksum }}
+{% endif %}
+{% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
+        checksumType: {{ cluster.image_checksum_type }}
+{% endif %}
+{% if cluster.image_format is defined and cluster.image_format %}
+        format: {{ cluster.image_format }}
+{% endif %}
       dataTemplate:
         name: {{ cluster.name }}-controlplane-template
 ---
@@ -104,8 +112,16 @@ spec:
   template:
     spec:
       image:
-        url: {{ cluster.image_url | default('http://images.local/EricssonCCD.qcow2') }}
-        checksum: {{ cluster.image_checksum | default('') }}
+        url: {{ cluster.image_url | default('http://images.local/your-os-image.qcow2') }}
+{% if cluster.image_checksum is defined and cluster.image_checksum %}
+        checksum: {{ cluster.image_checksum }}
+{% endif %}
+{% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
+        checksumType: {{ cluster.image_checksum_type }}
+{% endif %}
+{% if cluster.image_format is defined and cluster.image_format %}
+        format: {{ cluster.image_format }}
+{% endif %}
       dataTemplate:
         name: {{ cluster.name }}-{{ pool.name }}-template
 ---

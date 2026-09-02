@@ -217,7 +217,7 @@ pip install -r requirements.txt --break-system-packages   # 或用 venv
 跑测试（不需要真实数据库/管理集群，测试用 sqlite + 纯函数验证）：
 
 ```bash
-pip install pytest aiosqlite --break-system-packages
+pip install pytest aiosqlite jsonschema --break-system-packages
 cd ..
 python -m pytest tests -v
 ```
