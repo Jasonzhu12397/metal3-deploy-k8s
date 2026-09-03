@@ -5,8 +5,29 @@
      pod_cidr, service_cidr, k8s_version,
      worker_pools: [{name, count, node_labels: [...]}]
    }
+
+   Targets the Cluster API v1beta2 contract (Cluster/KubeadmControlPlane/
+   MachineDeployment/KubeadmConfigTemplate) and CAPM3 v1beta2
+   (Metal3Cluster/Metal3MachineTemplate) -- v1beta1 on these types is
+   marked deprecated as of CAPI v1.11.0 (storage version moved to
+   v1beta2) and CAPM3 v1.13.0 respectively. See README's "Known API
+   version debt" section for the full compatibility picture and why
+   OpenStack/vSphere/KubeVirt's own provider-specific resources (as
+   opposed to the CAPI-core resources shared across all providers, which
+   ARE updated here) are handled separately.
+
+   Two structural changes from v1beta1, not just version-string bumps:
+   - infrastructureRef/controlPlaneRef/configRef went from
+     {apiVersion: "<group>/<version>", kind, name} to
+     {apiGroup: "<group>", kind, name} -- no version in the reference at
+     all; the controller looks up the right version from the target
+     CRD's own contract labels.
+   - kubeletExtraArgs went from a map ({cloud-provider: ""}) to a list of
+     {name, value} objects -- and the field is invalid (minItems: 1) if
+     present but empty, so every args block below is wrapped in an
+     `{% if %}` that omits the key entirely rather than rendering `[]`.
 #}
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: {{ cluster.name }}
@@ -18,15 +39,15 @@ spec:
     services:
       cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: {{ cluster.name }}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: Metal3Cluster
     name: {{ cluster.name }}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: Metal3Cluster
 metadata:
   name: {{ cluster.name }}
@@ -35,9 +56,12 @@ spec:
   controlPlaneEndpoint:
     host: {{ cluster.control_plane_endpoint }}
     port: {{ cluster.control_plane_port | default(6443) }}
-  noCloudProvider: true
+  # v1beta2 renamed this from the old noCloudProvider (inverted boolean,
+  # deprecated even back in v1beta1) to cloudProviderEnabled -- false
+  # here means the same thing noCloudProvider: true used to.
+  cloudProviderEnabled: false
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: Metal3MachineTemplate
 metadata:
   name: {{ cluster.name }}-control-plane
@@ -47,19 +71,20 @@ spec:
     spec:
       image:
         url: {{ cluster.image_url | default('http://images.local/your-os-image.qcow2') }}
-{% if cluster.image_checksum is defined and cluster.image_checksum %}
-        checksum: {{ cluster.image_checksum }}
-{% endif %}
+        # required in the v1beta2 CRD (unlike v1beta1, where it was
+        # optional) -- but still allows an empty string, e.g. for
+        # live-iso/oci:// image references that don't need one.
+        checksum: "{{ cluster.image_checksum | default('') }}"
 {% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
         checksumType: {{ cluster.image_checksum_type }}
 {% endif %}
 {% if cluster.image_format is defined and cluster.image_format %}
-        format: {{ cluster.image_format }}
+        diskFormat: {{ cluster.image_format }}
 {% endif %}
       dataTemplate:
         name: {{ cluster.name }}-controlplane-template
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: {{ cluster.name }}-control-plane
@@ -68,24 +93,30 @@ spec:
   replicas: {{ cluster.control_plane_count | default(3) }}
   version: {{ cluster.k8s_version | default('v1.29.0') }}
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: Metal3MachineTemplate
-      name: {{ cluster.name }}-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: Metal3MachineTemplate
+        name: {{ cluster.name }}-control-plane
   kubeadmConfigSpec:
     initConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: ""
+          - name: cloud-provider
+            value: ""
 {% if cluster.control_plane_reserved_cpus is defined %}
-          reserved-cpus: "{{ cluster.control_plane_reserved_cpus }}"
-          cpu-manager-policy: "{{ cluster.control_plane_cpu_manager_policy | default('static') }}"
-          topology-manager-policy: "{{ cluster.control_plane_topology_manager_policy | default('single-numa-node') }}"
+          - name: reserved-cpus
+            value: "{{ cluster.control_plane_reserved_cpus }}"
+          - name: cpu-manager-policy
+            value: "{{ cluster.control_plane_cpu_manager_policy | default('static') }}"
+          - name: topology-manager-policy
+            value: "{{ cluster.control_plane_topology_manager_policy | default('single-numa-node') }}"
 {% endif %}
     clusterConfiguration:
       apiServer:
         extraArgs:
-          cloud-provider: ""
+          - name: cloud-provider
+            value: ""
 {% if cluster.control_plane_hugepage_count_1gb is defined and cluster.control_plane_hugepage_count_1gb %}
     preKubeadmCommands:
       - "echo {{ cluster.control_plane_hugepage_count_1gb }} > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages"
@@ -103,7 +134,7 @@ spec:
 {% endif %}
 {% for pool in cluster.worker_pools %}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: Metal3MachineTemplate
 metadata:
   name: {{ cluster.name }}-{{ pool.name }}
@@ -113,19 +144,20 @@ spec:
     spec:
       image:
         url: {{ cluster.image_url | default('http://images.local/your-os-image.qcow2') }}
-{% if cluster.image_checksum is defined and cluster.image_checksum %}
-        checksum: {{ cluster.image_checksum }}
-{% endif %}
+        # required in the v1beta2 CRD (unlike v1beta1, where it was
+        # optional) -- but still allows an empty string, e.g. for
+        # live-iso/oci:// image references that don't need one.
+        checksum: "{{ cluster.image_checksum | default('') }}"
 {% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
         checksumType: {{ cluster.image_checksum_type }}
 {% endif %}
 {% if cluster.image_format is defined and cluster.image_format %}
-        format: {{ cluster.image_format }}
+        diskFormat: {{ cluster.image_format }}
 {% endif %}
       dataTemplate:
         name: {{ cluster.name }}-{{ pool.name }}-template
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: {{ cluster.name }}-{{ pool.name }}
@@ -135,14 +167,20 @@ spec:
     spec:
       joinConfiguration:
         nodeRegistration:
+{% if (pool.node_labels is defined and pool.node_labels) or (pool.reserved_cpus is defined and pool.reserved_cpus) %}
           kubeletExtraArgs:
-{% if pool.node_labels %}
-            node-labels: "{{ pool.node_labels | join(',') }}"
+{% if pool.node_labels is defined and pool.node_labels %}
+            - name: node-labels
+              value: "{{ pool.node_labels | join(',') }}"
 {% endif %}
 {% if pool.reserved_cpus is defined and pool.reserved_cpus %}
-            reserved-cpus: "{{ pool.reserved_cpus }}"
-            cpu-manager-policy: "{{ pool.cpu_manager_policy | default('static') }}"
-            topology-manager-policy: "{{ pool.topology_manager_policy | default('single-numa-node') }}"
+            - name: reserved-cpus
+              value: "{{ pool.reserved_cpus }}"
+            - name: cpu-manager-policy
+              value: "{{ pool.cpu_manager_policy | default('static') }}"
+            - name: topology-manager-policy
+              value: "{{ pool.topology_manager_policy | default('single-numa-node') }}"
+{% endif %}
 {% endif %}
 {% if pool.hugepage_count_1gb is defined and pool.hugepage_count_1gb %}
       preKubeadmCommands:
@@ -152,7 +190,7 @@ spec:
 {% endif %}
 {% endif %}
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: {{ cluster.name }}-{{ pool.name }}
@@ -168,11 +206,11 @@ spec:
       version: {{ cluster.k8s_version | default('v1.29.0') }}
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: {{ cluster.name }}-{{ pool.name }}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: Metal3MachineTemplate
         name: {{ cluster.name }}-{{ pool.name }}
 {% endfor %}

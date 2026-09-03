@@ -48,7 +48,7 @@ def test_single_node_control_plane_only():
     ]
 
     assert kcp["spec"]["replicas"] == 1
-    assert kcp["spec"]["machineTemplate"]["infrastructureRef"]["kind"] == "DockerMachineTemplate"
+    assert kcp["spec"]["machineTemplate"]["spec"]["infrastructureRef"]["kind"] == "DockerMachineTemplate"
     # default true here (opposite of every other provider) -- a
     # single-node CAPD cluster whose only node can't run workloads
     # defeats the point of a quick smoke test
@@ -89,7 +89,8 @@ def test_worker_pool_renders_machine_deployment():
     assert md["spec"]["template"]["spec"]["infrastructureRef"]["kind"] == "DockerMachineTemplate"
 
     kct = next(d for d in docs if d["kind"] == "KubeadmConfigTemplate")
-    labels = kct["spec"]["template"]["spec"]["joinConfiguration"]["nodeRegistration"]["kubeletExtraArgs"]["node-labels"]
+    kubelet_args = kct["spec"]["template"]["spec"]["joinConfiguration"]["nodeRegistration"]["kubeletExtraArgs"]
+    labels = next(item["value"] for item in kubelet_args if item["name"] == "node-labels")
     assert labels == "role=demo"
 
 

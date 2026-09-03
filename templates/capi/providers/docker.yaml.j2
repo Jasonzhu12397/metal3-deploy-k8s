@@ -28,8 +28,17 @@
    doesn't take a controlPlaneEndpoint -- CAPD manages its own
    load-balancer container and fills that in itself once the cluster
    exists, which is also why cluster.control_plane_endpoint is never
-   referenced anywhere in this file. #}
-apiVersion: cluster.x-k8s.io/v1beta1
+   referenced anywhere in this file.
+
+   Targets the v1beta2 contract throughout, including DockerCluster/
+   DockerMachineTemplate themselves -- unlike OpenStack/vSphere/KubeVirt's
+   provider-specific types, CAPD ships in the same repo/release as CAPI
+   core and its v1beta2 types were confirmed served+storage at the same
+   CAPI v1.11.0 tag used to verify everything else here. See
+   templates/capi/cluster-template.yaml.j2's header comment for what
+   changed structurally from v1beta1 (apiVersion -> apiGroup in
+   references, kubeletExtraArgs map -> list). #}
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: {{ cluster.name }}
@@ -41,22 +50,22 @@ spec:
     services:
       cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: {{ cluster.name }}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: DockerCluster
     name: {{ cluster.name }}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: DockerCluster
 metadata:
   name: {{ cluster.name }}
   namespace: {{ cluster.namespace }}
 spec: {}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: DockerMachineTemplate
 metadata:
   name: {{ cluster.name }}-control-plane
@@ -68,7 +77,7 @@ spec:
         - containerPath: /var/run/docker.sock
           hostPath: /var/run/docker.sock
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: {{ cluster.name }}-control-plane
@@ -77,10 +86,11 @@ spec:
   replicas: {{ cluster.control_plane_count | default(1) }}
   version: {{ cluster.k8s_version | default('v1.29.0') }}
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: DockerMachineTemplate
-      name: {{ cluster.name }}-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DockerMachineTemplate
+        name: {{ cluster.name }}-control-plane
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
@@ -95,7 +105,7 @@ spec:
 {% endif %}
 {% for pool in cluster.worker_pools %}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: DockerMachineTemplate
 metadata:
   name: {{ cluster.name }}-{{ pool.name }}
@@ -107,7 +117,7 @@ spec:
         - containerPath: /var/run/docker.sock
           hostPath: /var/run/docker.sock
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: {{ cluster.name }}-{{ pool.name }}
@@ -117,12 +127,13 @@ spec:
     spec:
       joinConfiguration:
         nodeRegistration:
+{% if pool.node_labels is defined and pool.node_labels %}
           kubeletExtraArgs:
-{% if pool.node_labels %}
-            node-labels: "{{ pool.node_labels | join(',') }}"
+            - name: node-labels
+              value: "{{ pool.node_labels | join(',') }}"
 {% endif %}
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: {{ cluster.name }}-{{ pool.name }}
@@ -138,11 +149,11 @@ spec:
       version: {{ cluster.k8s_version | default('v1.29.0') }}
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: {{ cluster.name }}-{{ pool.name }}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: DockerMachineTemplate
         name: {{ cluster.name }}-{{ pool.name }}
 {% endfor %}

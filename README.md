@@ -322,78 +322,128 @@ a way to reach a *target* cluster's own Kubernetes API (this backend has
 so far only ever talked to the *management* cluster) -- a real
 architectural piece, not just more CRUD, and not built yet.
 
-## Known API version debt
+## API version migration (v1beta1 -> v1beta2)
 
-Found while adding real-CRD-schema validation (see "Manifest schema
-validation" below), not something anyone previously flagged: this
-project's CAPI templates (`templates/capi/*.j2`, all providers) target
-`cluster.x-k8s.io/v1beta1` for `Cluster`/`MachineDeployment`,
-`controlplane.cluster.x-k8s.io/v1beta1` for `KubeadmControlPlane`, and
-`bootstrap.cluster.x-k8s.io/v1beta1` for `KubeadmConfigTemplate`.
+This used to be a "known debt" section describing a problem; it's now a
+record of what was actually done about it, because leaving it unresolved
+stopped being acceptable once the question became "can this actually be
+used to deploy a real cluster" rather than "does this look right."
 
-As of Cluster API v1.11.0, `v1beta1` on these types is marked
-`deprecated: true` in the CRD itself, with `v1beta2` now the storage
-version. `v1beta1` is still `served: true` (a real CAPI v1.11.x/v1.12.x
-install will currently still accept manifests at v1beta1 -- confirmed by
-validating this project's actual rendered manifests against the real
-v1.11.0 CRD schema, see `tests/test_manifest_schema_validation.py`), so
-nothing here is currently broken. But it's on a deprecation path, not
-just an older-but-fine version sitting still.
+As of Cluster API v1.11.0, `v1beta1` is marked `deprecated: true` on
+`Cluster`/`MachineDeployment`/`KubeadmControlPlane`/`KubeadmConfigTemplate`
+(the CAPI-core resources every provider template renders), with
+`v1beta2` now the storage version. All 5 provider templates
+(`templates/capi/*.j2`) were migrated to target v1beta2 for these
+shared resources. This was a real, structural migration, not a
+version-string find-and-replace -- three breaking contract changes were
+involved, verified against the real downloaded v1.11.0 CRDs (not
+assumed):
 
-Metal3-specific resources have the same situation one version earlier:
-CAPM3 v1.13.x has moved `Metal3Cluster`/`Metal3MachineTemplate` to
-`v1beta2`; CAPM3 v1.12.x (still "Supported" per Metal3's own version-support
-page) is the last line still on `v1beta1`, which is what this project
-targets.
+- `infrastructureRef`/`controlPlaneRef`/`configRef` changed from
+  `{apiVersion: "<group>/<version>", kind, name}` to
+  `{apiGroup: "<group>", kind, name}` -- no version in the reference at
+  all; the controller looks up the correct version from the target
+  CRD's own contract labels.
+- `KubeadmControlPlane.spec.machineTemplate.infrastructureRef` moved one
+  level deeper, to `machineTemplate.spec.infrastructureRef`.
+- `kubeletExtraArgs` (on both `initConfiguration` and
+  `joinConfiguration`) and `clusterConfiguration.apiServer.extraArgs`
+  changed from a map (`{cloud-provider: ""}`) to a list of `{name, value}`
+  objects, and the field is invalid if present-but-empty
+  (`minItems: 1`) -- every args block is conditionally rendered to omit
+  the key entirely rather than emit an empty list.
 
-Migrating to v1beta2 isn't just a version-string find-and-replace --
-CAPI's v1beta2 changed how `infrastructureRef` is expressed (splitting
-the old combined `apiVersion` field into separate `apiGroup` + `kind`),
-so it touches every provider template, not just Metal3's. Not done here
--- this is scope for a dedicated follow-up, flagged honestly rather than
-silently left for someone to discover the hard way later.
+Per-provider status for the provider-*specific* resources (as opposed to
+the CAPI-core resources above, which are on v1beta2 for all 5 now) --
+see `backend/tests_data/crd_schemas/README.md` for the full table with
+exact versions/tags/sources:
+
+- **Metal3** (`Metal3Cluster`/`Metal3MachineTemplate`): migrated to
+  **v1beta2** (CAPM3 v1.13.x). Involved its own field-level changes
+  beyond the CAPI-core ones above: `noCloudProvider: true` became
+  `cloudProviderEnabled: false` (inverted boolean), `format` was renamed
+  `diskFormat`, and -- notably -- `checksum` became a *required* field
+  (the opposite direction from the v1beta1-era bug fix described below,
+  which had made checksum conditionally *omitted*; now it's always
+  rendered, as an explicitly-quoted empty string when not supplied, to
+  avoid the exact same YAML null-vs-empty-string trap a second time).
+- **Docker/CAPD** (`DockerCluster`/`DockerMachineTemplate`): migrated to
+  **v1beta2**. Ships in the same repo/release as CAPI core, so this was
+  confirmed served+storage at the same v1.11.0 tag used for everything
+  else -- no separate version research needed.
+- **OpenStack/CAPO** (`OpenStackCluster`/`OpenStackMachineTemplate`):
+  deliberately kept at **v1beta1**. CAPO's own v1beta2 types are newer
+  and still stabilizing (recent CAPO releases ship v1beta1<->v1beta2
+  conversion webhooks specifically because the two aren't a drop-in
+  match) -- v1beta1 confirmed `served: true, storage: true` at CAPO
+  v0.11.3, still the broadly-compatible choice today.
+- **vSphere/CAPV** (`VSphereCluster`/`VSphereMachineTemplate`):
+  deliberately kept at **v1beta1**. CAPV's v1beta2 only landed in CAPV
+  v1.16; the v1.13-v1.15 line (what most current installs run) is still
+  v1beta1 -- confirmed `served: true, storage: true` at CAPV v1.13.0.
+- **KubeVirt/CAPK** (`KubevirtCluster`/`KubevirtMachineTemplate`): no
+  migration exists to do -- confirmed CAPK has never shipped a
+  v1beta1/v1beta2 for its own types; only `v1alpha1` is served at the
+  latest stable CAPK release (v0.1.10).
+
+Every one of these claims (which versions are served/storage/deprecated,
+what the field-level differences actually are) was checked against a
+real, downloaded CRD from the actual upstream repo at a specific tag --
+not inferred from changelogs or assumed from a related provider's
+behavior. See `backend/tests_data/crd_schemas/README.md`'s table for the
+exact repo/tag/path each one came from.
 
 ## Manifest schema validation
 
 `tests/test_manifest_schema_validation.py` validates every manifest this
-project actually renders against the REAL upstream `CustomResourceDefinition`
-schemas for Cluster API core + Cluster API Provider Metal3 +
-baremetal-operator (snapshotted in `backend/tests_data/crd_schemas/`,
-see that directory's own README for exactly where they came from and how
-to refresh them) -- not a hand-approximated schema, the actual
+project actually renders, for **all 5 infrastructure providers**,
+against the REAL upstream `CustomResourceDefinition` schemas (snapshotted
+in `backend/tests_data/crd_schemas/`, see that directory's own README for
+exactly where they came from, which contract version each targets, and
+how to refresh them) -- not a hand-approximated schema, the actual
 `openAPIV3Schema` a real Kubernetes API server would enforce on
 `kubectl apply`.
 
 This exists because every other test in this project either checks "is
 this valid YAML" or mocks the Kubernetes layer entirely (see "What's
 stubbed vs. real" below) -- neither catches a manifest with the right
-field names and right structure but a value of the wrong *type*, which
-is exactly what a real API server's admission validation rejects. This
-gap was real, not hypothetical: building this test caught an actual bug
-immediately -- `checksum: {{ cluster.image_checksum | default('') }}`
-rendered `checksum: ` (empty) when no checksum was supplied, and YAML
-parses a bare/empty scalar as `null`, not empty string, which the real
-`Metal3MachineTemplate` CRD rejects (`checksum`, when present, must be a
-string; the fix was to only emit the key when there's an actual value,
-matching the `is defined and X` pattern already used elsewhere in these
-templates for the same reason). Also caught, in the same block: the
-default placeholder image URL still referenced a customer-specific
-filename (`EricssonCCD.qcow2`) that an earlier cleanup pass had missed --
-replaced with an unambiguous placeholder.
+field names and right structure but a value of the wrong *type*, or a
+reference field using a contract version's old shape. This gap was real,
+not hypothetical: building and then extending this test caught real bugs
+on two separate occasions:
 
-What this test suite does NOT prove: that a real Ironic/baremetal-operator/CAPM3
-controller would successfully *reconcile* these objects into an actual
-running cluster (that needs real hardware, or the
+1. `checksum: {{ cluster.image_checksum | default('') }}` rendered
+   `checksum: ` (empty) when no checksum was supplied, and YAML parses a
+   bare/empty scalar as `null`, not empty string, which the
+   then-current `Metal3MachineTemplate` CRD rejected (`checksum`, when
+   present, had to be a string). Fixed by only emitting the key when
+   there's an actual value. Also caught, in the same block: the default
+   placeholder image URL still referenced a customer-specific filename
+   (`EricssonCCD.qcow2`) that an earlier cleanup pass had missed --
+   replaced with an unambiguous placeholder.
+2. The v1beta1 -> v1beta2 migration described above -- attempted once,
+   validated, and found still failing twice before it actually passed:
+   first because v1beta2 made `checksum` *required* (opposite of fix #1
+   above) so omitting it now fails differently than including it as
+   null did before, and second because `clusterConfiguration.apiServer.extraArgs`
+   turned out to need the same map->list conversion as
+   `kubeletExtraArgs` and was missed on the first pass. Both were caught
+   by this same test suite immediately, not discovered later.
+
+What this test suite does NOT prove: that a real
+Ironic/baremetal-operator/CAPM3/CAPO/CAPV/CAPK controller would
+successfully *reconcile* these objects into an actual running cluster
+(that needs real infrastructure, or the
 `deploy/testing/vm-bmc/`/`deploy/testing/capd-quickstart/` paths -- see
 those directories' own READMEs for what's verified vs. not there), or
 every *semantic* constraint the real controllers enforce beyond
 structural schema validation (e.g. nothing checks that
-`infrastructureRef` points at a `Metal3Cluster` that actually exists --
-that's reconciliation-time logic, not admission-time schema validation).
-What it DOES prove: a real Kubernetes API server's structural admission
-check would accept these objects, which is categorically stronger than
-"this parses as YAML" and is exactly the gap that let the checksum bug
-above ship unnoticed.
+`infrastructureRef` points at a resource that actually exists -- that's
+reconciliation-time logic, not admission-time schema validation). What
+it DOES prove: a real Kubernetes API server's structural admission check
+would accept these objects, which is categorically stronger than "this
+parses as YAML" and is exactly the gap that let both bugs above ship
+unnoticed the first time.
 
 ## Tests
 

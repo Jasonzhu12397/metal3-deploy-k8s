@@ -13,6 +13,13 @@ from app.services.cpu_topology import compute_reserved_cpus, isolated_cpu_count 
 from app.services.asset_planner import AssetPlannerService  # noqa: E402
 
 
+def _arg_value(kubelet_extra_args: list[dict], name: str) -> str:
+    """kubeletExtraArgs is a list of {name, value} objects (CAPI v1beta2
+    contract), not a map -- see templates/capi/cluster-template.yaml.j2's
+    header comment for why. Looks up one arg's value by name."""
+    return next(item["value"] for item in kubelet_extra_args if item["name"] == name)
+
+
 def test_compute_reserved_cpus_matches_known_pattern():
     # 2 sockets x 32 cores, reserve 4 cores/socket, SMT=2 -> matches the
     # reserved_cpus string used in the operator's existing control-plane pool.
@@ -108,7 +115,7 @@ def test_generate_bundle_produces_valid_yaml_for_picked_hardware():
     cluster_docs = planner.yaml_gen.parse_multi(bundle["cluster_config_yaml"])
     kct = next(d for d in cluster_docs if d["kind"] == "KubeadmConfigTemplate")
     kubelet_args = kct["spec"]["template"]["spec"]["joinConfiguration"]["nodeRegistration"]["kubeletExtraArgs"]
-    assert kubelet_args["reserved-cpus"] == "0,64,1,65,2,66,3,67,32,96,33,97,34,98,35,99"
+    assert _arg_value(kubelet_args, "reserved-cpus") == "0,64,1,65,2,66,3,67,32,96,33,97,34,98,35,99"
 
     assert "pool1/worker-node-01" in bundle["network_policies"]
 
@@ -139,7 +146,7 @@ def test_control_plane_pool_drives_kubeadmcontrolplane_not_a_machinedeployment()
     assert kcp["spec"]["replicas"] == 1  # not the stale 3
 
     kubelet_args = kcp["spec"]["kubeadmConfigSpec"]["initConfiguration"]["nodeRegistration"]["kubeletExtraArgs"]
-    assert kubelet_args["reserved-cpus"] == compute_reserved_cpus(2, 32, 2, 2)
+    assert _arg_value(kubelet_args, "reserved-cpus") == compute_reserved_cpus(2, 32, 2, 2)
 
     # single control-plane node, zero workers -> genuine single-node cluster
     # -> the control-plane NoSchedule taint must be dropped so pods can run.

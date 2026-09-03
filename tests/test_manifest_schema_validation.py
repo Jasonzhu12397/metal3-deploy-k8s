@@ -1,35 +1,43 @@
 """
 Validates every manifest this project's YamlGeneratorService actually
-renders against the REAL upstream CustomResourceDefinition schemas for
-Cluster API core + Cluster API Provider Metal3 + baremetal-operator --
-not a hand-approximated schema, the actual openAPIV3Schema Kubernetes
-itself would enforce (see backend/tests_data/crd_schemas/README.md for
-exactly where these came from and how to refresh them).
+renders, for ALL FIVE infrastructure providers, against the REAL
+upstream CustomResourceDefinition schemas -- not a hand-approximated
+schema, the actual openAPIV3Schema Kubernetes itself would enforce (see
+backend/tests_data/crd_schemas/README.md for exactly where these came
+from, which contract version each targets, and how to refresh them).
 
 Every other test in this project either checks "is this valid YAML" or
 mocks the Kubernetes layer entirely -- neither can catch a manifest with
 the right field names and right YAML structure but a value of the wrong
-*type*, which is exactly what a real API server rejects on `kubectl
-apply`. This file exists because that gap is real: it caught an actual
-bug during development (not a hypothetical one added retroactively) --
-`checksum: {{ cluster.image_checksum | default('') }}` rendered
-`checksum: ` when no checksum was supplied, and an empty/absent YAML
-scalar parses as `null`, not empty string, which the real
-Metal3MachineTemplate CRD rejects (checksum, when present, must be a
-string). Fixed by only emitting the key when there's a real value --
-see templates/capi/cluster-template.yaml.j2's image block.
+*type*, or a reference field using a contract version's old shape. This
+file exists because that gap is real: it caught real bugs on two
+separate occasions during development, not hypothetical ones added
+retroactively:
 
-What this does NOT prove: that a real Ironic/baremetal-operator/CAPM3
-controller would successfully reconcile these objects into an actual
-running cluster (needs real hardware or the vm-bmc/capd-quickstart
-testing paths, see deploy/testing/), or that these objects satisfy every
+1. `checksum: {{ cluster.image_checksum | default('') }}` rendered
+   `checksum: ` when no checksum was supplied, and an empty/absent YAML
+   scalar parses as `null`, not empty string -- the (then-current)
+   Metal3MachineTemplate CRD rejected that. Fixed by only emitting the
+   key when there's a real value.
+2. Migrating from the CAPI v1beta1 contract (deprecated as of CAPI
+   v1.11.0) to v1beta2 changed `infrastructureRef`/`controlPlaneRef`/
+   `configRef` from `{apiVersion, kind, name}` to `{apiGroup, kind, name}`,
+   and `kubeletExtraArgs`/`apiServer.extraArgs` from a map to a list of
+   `{name, value}` objects -- across all 5 provider templates. Metal3's
+   own v1beta2 types separately renamed `noCloudProvider` to
+   `cloudProviderEnabled`, `format` to `diskFormat`, and made `checksum`
+   REQUIRED (the opposite of the v1beta1 fix in bug #1 above -- this
+   file's tests for both "empty checksum" and "provided checksum" exist
+   specifically because that requirement direction flipped once already).
+
+What this does NOT prove: that a real Ironic/baremetal-operator/CAPM3/
+CAPO/CAPV/CAPK controller would successfully *reconcile* these objects
+into an actual running cluster (needs real infrastructure, or the
+vm-bmc/capd-quickstart testing paths under deploy/testing/ -- see those
+directories' own READMEs for what's verified vs. not there), or every
 *semantic* constraint the real controllers enforce beyond what the CRD's
-structural schema captures (e.g. the schema doesn't require
-infrastructureRef to point at a Metal3Cluster that actually exists --
-that's runtime reconciliation logic, not admission-time schema
-validation). What it DOES prove: a real Kubernetes API server's
-structural admission validation would accept these objects, which is a
-categorically stronger claim than "this parses as YAML".
+structural schema captures. What it DOES prove: a real Kubernetes API
+server's structural admission validation would accept these objects.
 """
 import os
 import sys
@@ -42,6 +50,7 @@ from jsonschema import Draft4Validator
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 from app.services.asset_planner import AssetPlannerService  # noqa: E402
+from app.services.yaml_generator import YamlGeneratorService  # noqa: E402
 from app.models.hardware_asset import HardwareAsset  # noqa: E402
 
 CRD_DIR = Path(__file__).parent.parent / "backend" / "tests_data" / "crd_schemas"
@@ -59,28 +68,55 @@ def _extract_schema(crd_filename: str, version: str) -> dict:
 @pytest.fixture(scope="module")
 def schemas() -> dict[tuple[str, str], dict]:
     """(apiVersion, kind) -> real openAPIV3Schema, loaded once per test
-    module run (these files are large; re-parsing per-test would be
-    needlessly slow)."""
+    module run. See backend/tests_data/crd_schemas/README.md's
+    version-status table for why each (kind -> version) pairing here is
+    what it is -- v1beta2 where this project's templates use v1beta2,
+    v1beta1/v1alpha1 where a provider's own resources are deliberately
+    still on those (documented, not an oversight)."""
     return {
-        ("cluster.x-k8s.io/v1beta1", "Cluster"): _extract_schema("cluster.yaml", "v1beta1"),
-        ("cluster.x-k8s.io/v1beta1", "MachineDeployment"): _extract_schema("machinedeployment.yaml", "v1beta1"),
-        ("controlplane.cluster.x-k8s.io/v1beta1", "KubeadmControlPlane"): _extract_schema(
-            "kubeadmcontrolplane.yaml", "v1beta1"
+        ("cluster.x-k8s.io/v1beta2", "Cluster"): _extract_schema("cluster.yaml", "v1beta2"),
+        ("cluster.x-k8s.io/v1beta2", "MachineDeployment"): _extract_schema("machinedeployment.yaml", "v1beta2"),
+        ("controlplane.cluster.x-k8s.io/v1beta2", "KubeadmControlPlane"): _extract_schema(
+            "kubeadmcontrolplane.yaml", "v1beta2"
         ),
-        ("bootstrap.cluster.x-k8s.io/v1beta1", "KubeadmConfigTemplate"): _extract_schema(
-            "kubeadmconfigtemplate.yaml", "v1beta1"
+        ("bootstrap.cluster.x-k8s.io/v1beta2", "KubeadmConfigTemplate"): _extract_schema(
+            "kubeadmconfigtemplate.yaml", "v1beta2"
         ),
-        ("infrastructure.cluster.x-k8s.io/v1beta1", "Metal3Cluster"): _extract_schema(
-            "metal3cluster.yaml", "v1beta1"
+        ("infrastructure.cluster.x-k8s.io/v1beta2", "Metal3Cluster"): _extract_schema(
+            "metal3cluster.yaml", "v1beta2"
         ),
-        ("infrastructure.cluster.x-k8s.io/v1beta1", "Metal3MachineTemplate"): _extract_schema(
-            "metal3machinetemplate.yaml", "v1beta1"
+        ("infrastructure.cluster.x-k8s.io/v1beta2", "Metal3MachineTemplate"): _extract_schema(
+            "metal3machinetemplate.yaml", "v1beta2"
         ),
         ("metal3.io/v1alpha1", "BareMetalHost"): _extract_schema("baremetalhost.yaml", "v1alpha1"),
+        ("infrastructure.cluster.x-k8s.io/v1beta2", "DockerCluster"): _extract_schema(
+            "dockercluster.yaml", "v1beta2"
+        ),
+        ("infrastructure.cluster.x-k8s.io/v1beta2", "DockerMachineTemplate"): _extract_schema(
+            "dockermachinetemplate.yaml", "v1beta2"
+        ),
+        ("infrastructure.cluster.x-k8s.io/v1beta1", "OpenStackCluster"): _extract_schema(
+            "openstackcluster.yaml", "v1beta1"
+        ),
+        ("infrastructure.cluster.x-k8s.io/v1beta1", "OpenStackMachineTemplate"): _extract_schema(
+            "openstackmachinetemplate.yaml", "v1beta1"
+        ),
+        ("infrastructure.cluster.x-k8s.io/v1beta1", "VSphereCluster"): _extract_schema(
+            "vspherecluster.yaml", "v1beta1"
+        ),
+        ("infrastructure.cluster.x-k8s.io/v1beta1", "VSphereMachineTemplate"): _extract_schema(
+            "vspheremachinetemplate.yaml", "v1beta1"
+        ),
+        # KubevirtCluster/KubevirtMachineTemplate (v1alpha1) intentionally
+        # absent -- see fixtures README. test_kubevirt_provider_* below
+        # explicitly tells _assert_all_valid to expect and skip those two
+        # kinds rather than silently ignoring an unregistered schema.
     }
 
 
-def _assert_all_valid(docs: list[dict], schemas: dict) -> None:
+def _assert_all_valid(
+    docs: list[dict], schemas: dict, expected_unvalidated_kinds: frozenset[str] = frozenset()
+) -> None:
     failures = []
     validated_count = 0
     for doc in docs:
@@ -88,11 +124,8 @@ def _assert_all_valid(docs: list[dict], schemas: dict) -> None:
         name = doc.get("metadata", {}).get("name", "?")
         schema = schemas.get(key)
         if schema is None:
-            # Every kind this project's metal3 templates render has a
-            # schema above -- an unrecognized kind here means either a
-            # new resource type was added to the templates without
-            # updating this test, or a typo'd apiVersion/kind. Either
-            # way, silently skipping would defeat the point.
+            if doc.get("kind") in expected_unvalidated_kinds:
+                continue
             failures.append(f"{doc.get('kind')}/{name}: no schema registered for {key}")
             continue
         validated_count += 1
@@ -135,31 +168,33 @@ def _assignment(role: str):
     )
 
 
-def _render_all(planner: AssetPlannerService, cluster_spec: dict, pools: dict) -> list[dict]:
+def _render_metal3(planner: AssetPlannerService, cluster_spec: dict, pools: dict) -> list[dict]:
     bundle = planner.generate_bundle(cluster_spec, pools)
     return planner.yaml_gen.parse_multi(bundle["cluster_config_yaml"]) + planner.yaml_gen.parse_multi(
         bundle["bmh_yaml"]
     )
 
 
-def test_single_node_cluster_without_image_checksum(schemas):
-    """The exact case that caught the real bug: no image_checksum
-    supplied at all. Before the fix, this produced checksum: null on
-    Metal3MachineTemplate, which the real CRD rejects (checksum, if
-    present, must be a string -- see tests_data/crd_schemas' module
-    docstring above)."""
+# ---------------------------------------------------------------------
+# Metal3 -- the provider this whole test file exists because of
+# ---------------------------------------------------------------------
+
+
+def test_metal3_single_node_cluster_without_image_checksum(schemas):
+    """The exact case that caught the original bug: no image_checksum
+    supplied at all."""
     planner = AssetPlannerService()
     pools = {"control-plane": ([_asset("cp-01")], [_assignment("control-plane")])}
-    docs = _render_all(
+    docs = _render_metal3(
         planner, {"name": "single-node", "namespace": "metal3", "control_plane_endpoint": "192.0.2.1"}, pools
     )
     _assert_all_valid(docs, schemas)
 
 
-def test_single_node_cluster_with_image_checksum(schemas):
+def test_metal3_single_node_cluster_with_image_checksum(schemas):
     planner = AssetPlannerService()
     pools = {"control-plane": ([_asset("cp-01")], [_assignment("control-plane")])}
-    docs = _render_all(
+    docs = _render_metal3(
         planner,
         {
             "name": "single-node-checksummed",
@@ -173,25 +208,26 @@ def test_single_node_cluster_with_image_checksum(schemas):
     _assert_all_valid(docs, schemas)
 
 
-def test_ha_cluster_with_control_plane_and_worker_pools(schemas):
+def test_metal3_ha_cluster_with_control_plane_and_worker_pools(schemas):
     planner = AssetPlannerService()
     pools = {
-        "control-plane": ([_asset("cp-0", 0), _asset("cp-1", 1), _asset("cp-2", 2)], [_assignment("control-plane")] * 3),
+        "control-plane": (
+            [_asset("cp-0", 0), _asset("cp-1", 1), _asset("cp-2", 2)],
+            [_assignment("control-plane")] * 3,
+        ),
         "workers": ([_asset("wk-0", 3), _asset("wk-1", 4)], [_assignment("worker")] * 2),
     }
-    docs = _render_all(
+    docs = _render_metal3(
         planner, {"name": "ha-cluster", "namespace": "metal3", "control_plane_endpoint": "192.0.2.100"}, pools
     )
-    assert len(docs) == 12  # Cluster, Metal3Cluster, 2x(Metal3MachineTemplate), KubeadmControlPlane,
-    # KubeadmConfigTemplate, MachineDeployment, 5x BareMetalHost
+    assert len(docs) == 12
     _assert_all_valid(docs, schemas)
 
 
-def test_gpu_pool_labels_are_still_schema_valid(schemas):
-    """GPU support (see backend/tests/test_gpu_hardware.py) adds
-    node_labels entries like 'gpu=true' -- confirm those don't somehow
-    produce a KubeadmConfigTemplate/KubeadmControlPlane the real schema
-    would reject (e.g. via an unexpected type in kubeletExtraArgs)."""
+def test_metal3_gpu_pool_labels_are_still_schema_valid(schemas):
+    """GPU support adds node_labels entries like 'gpu=true' -- confirm
+    those survive the kubeletExtraArgs map->list conversion without
+    producing something the real schema would reject."""
     planner = AssetPlannerService()
     gpu_asset = HardwareAsset(
         name="gpu-01",
@@ -209,7 +245,7 @@ def test_gpu_pool_labels_are_still_schema_valid(schemas):
         "control-plane": ([_asset("cp-01")], [_assignment("control-plane")]),
         "gpu-pool": ([gpu_asset], [_assignment("worker")]),
     }
-    docs = _render_all(
+    docs = _render_metal3(
         planner, {"name": "gpu-cluster", "namespace": "metal3", "control_plane_endpoint": "192.0.2.1"}, pools
     )
     _assert_all_valid(docs, schemas)
@@ -218,10 +254,10 @@ def test_gpu_pool_labels_are_still_schema_valid(schemas):
 def test_deliberately_broken_manifest_is_caught_by_this_test_harness(schemas):
     """Meta-test: proves _assert_all_valid actually fails on a genuinely
     invalid object, rather than silently passing everything (which would
-    make every test above worthless)."""
+    make every test in this file worthless)."""
     broken = [
         {
-            "apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
+            "apiVersion": "infrastructure.cluster.x-k8s.io/v1beta2",
             "kind": "Metal3MachineTemplate",
             "metadata": {"name": "broken", "namespace": "metal3"},
             "spec": {"template": {"spec": {"image": {"url": "http://x/y.qcow2", "checksum": None}}}},
@@ -229,3 +265,105 @@ def test_deliberately_broken_manifest_is_caught_by_this_test_harness(schemas):
     ]
     with pytest.raises(AssertionError, match="would be REJECTED"):
         _assert_all_valid(broken, schemas)
+
+
+# ---------------------------------------------------------------------
+# The other 4 providers -- CAPI-core resources validated for all of
+# them; provider-specific resources validated too where this project
+# deliberately kept a schema on hand (docker: v1beta2; openstack/vsphere:
+# v1beta1). kubevirt's provider-specific resources are the one
+# exception, expected and asserted explicitly below.
+# ---------------------------------------------------------------------
+
+
+def test_docker_provider_end_to_end(schemas):
+    gen = YamlGeneratorService()
+    spec = {
+        "name": "dockertest",
+        "namespace": "metal3",
+        "infrastructure_provider": "docker",
+        "control_plane_count": 1,
+        "worker_pools": [{"name": "workers", "count": 2, "node_labels": ["role=demo"]}],
+    }
+    docs = gen.parse_multi(gen.render_cluster_config(spec))
+    _assert_all_valid(docs, schemas)
+
+
+def test_openstack_provider_end_to_end(schemas):
+    gen = YamlGeneratorService()
+    spec = {
+        "name": "osttest",
+        "namespace": "metal3",
+        "infrastructure_provider": "openstack",
+        "control_plane_count": 3,
+        "control_plane_endpoint": "192.0.2.1",
+        "control_plane_flavor": "m1.large",
+        "control_plane_image": "ubuntu-22.04",
+        "control_plane_reserved_cpus": "0,1,2,3",
+        "worker_pools": [
+            {
+                "name": "workers",
+                "count": 2,
+                "flavor": "m1.medium",
+                "image": "ubuntu-22.04",
+                "node_labels": ["role=test"],
+                "reserved_cpus": "0,1",
+            }
+        ],
+        "openstack": {
+            "cloud_name": "mycloud",
+            "external_network_id": "abc-123",
+            "ssh_key_name": "mykey",
+            "security_groups": ["default"],
+        },
+    }
+    docs = gen.parse_multi(gen.render_cluster_config(spec))
+    _assert_all_valid(docs, schemas)
+
+
+def test_vsphere_provider_end_to_end(schemas):
+    gen = YamlGeneratorService()
+    spec = {
+        "name": "vstest",
+        "namespace": "metal3",
+        "infrastructure_provider": "vsphere",
+        "control_plane_count": 3,
+        "control_plane_endpoint": "192.0.2.1",
+        "control_plane_flavor": "",
+        "control_plane_image": "ubuntu-template",
+        "worker_pools": [{"name": "workers", "count": 2, "flavor": "", "image": "ubuntu-template"}],
+        "vsphere": {
+            "server": "vcenter.local",
+            "datacenter": "dc1",
+            "datastore": "ds1",
+            "network": "net1",
+            "resource_pool": "rp1",
+            "folder": "vms",
+        },
+    }
+    docs = gen.parse_multi(gen.render_cluster_config(spec))
+    _assert_all_valid(docs, schemas)
+
+
+def test_kubevirt_provider_shared_capi_core_resources(schemas):
+    """KubevirtCluster/KubevirtMachineTemplate (v1alpha1) aren't
+    schema-validated here -- see fixtures README for why -- so this
+    explicitly tells _assert_all_valid to expect and ignore exactly
+    those two kinds, while everything else rendered (the v1beta2
+    CAPI-core resources) still gets fully checked."""
+    gen = YamlGeneratorService()
+    spec = {
+        "name": "kvtest",
+        "namespace": "metal3",
+        "infrastructure_provider": "kubevirt",
+        "control_plane_count": 1,
+        "control_plane_endpoint": "192.0.2.1",
+        "control_plane_flavor": "",
+        "control_plane_image": "kubevirt-image",
+        "worker_pools": [{"name": "workers", "count": 1, "flavor": "", "image": "kubevirt-image"}],
+        "kubevirt": {"storage_class_name": "local-path"},
+    }
+    docs = gen.parse_multi(gen.render_cluster_config(spec))
+    _assert_all_valid(
+        docs, schemas, expected_unvalidated_kinds=frozenset({"KubevirtCluster", "KubevirtMachineTemplate"})
+    )
