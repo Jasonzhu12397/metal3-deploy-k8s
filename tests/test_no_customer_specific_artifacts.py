@@ -32,6 +32,13 @@ FORBIDDEN_PATTERNS = [
     r"10\.0\.10\.\d+",
     r"10\.0\.70\.\d+",
     r"10\.217\.\d+\.\d+",
+    r"\bccdadm\b",  # the bare tool name itself, not just "ccdadm-config.yaml" --
+    # this exact gap (checking only the filename, not the word) is why
+    # ~7 occurrences of the bare word survived the original cleanup pass
+    # entirely undetected across README.md/USAGE.md/several .py files'
+    # comments until a later, unrelated pass happened to spot one by eye.
+    r"\bSDI3\b",
+    r"EricssonCCD",
 ]
 
 # Directories that legitimately never need scanning (build output,

@@ -69,7 +69,7 @@ class Cluster(TimestampedModel):
     control_plane_endpoint: Mapped[str | None] = mapped_column(String(255), nullable=True)
     control_plane_count: Mapped[int] = mapped_column(default=3)
     worker_pool_config: Mapped[dict] = mapped_column(JSON, default=dict)
-    # Free-form spec derived from the uploaded ccdadm-style config
+    # Free-form spec derived from a hand-maintained cluster config
     # (infra/networks/iaas/kubernetes sections). Never store raw secrets
     # here -- reference a secret name/path instead. Also where
     # provider-specific cloud config lives for non-metal3 clusters (e.g.

@@ -4,7 +4,7 @@ Cluster API (CAPI) orchestration for the *target* production cluster.
 This drives cluster.x-k8s.io + infrastructure.cluster.x-k8s.io (Metal3)
 custom resources from the management cluster (the ephemeral PXE node
 during bootstrap, or a permanent management cluster afterwards), matching
-the CAPI + Metal3 flow implied by the uploaded ccdadm-style config
+the CAPI + Metal3 flow implied by a typical hand-maintained cluster config
 (control-plane pool, worker_pools, networks, addons).
 """
 from __future__ import annotations

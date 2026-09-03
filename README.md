@@ -1,7 +1,7 @@
 # metal3-deploy-k8s-backend
 
 Automation layer on top of Cluster API, built to replace shell-script-driven
-deployment (`ccdadm cluster bootstrap` + hand-edited `bmh.yaml` /
+deployment (hand-run bootstrap commands + hand-edited `bmh.yaml` /
 `k8s-config.yaml` / `eph-net.yaml`) with an API + async task pipeline, plus
 a React console (`frontend/`) driving it.
 
@@ -109,7 +109,7 @@ frontend/           React + Vite + TypeScript console (see "Frontend" below)
 ### Deployment flow (`POST /api/v1/deployments`)
 
 1. `generating_manifests` – validate/render Cluster API manifests from the cluster spec
-2. `bootstrapping_ephemeral_node` – assumes the ephemeral PXE node's single-node management cluster (Metal3 + CAPI) is already reachable via `MGMT_KUBECONFIG_PATH` (that bootstrap itself is SDI3/netconf + kubeadm territory and out of scope for this service today)
+2. `bootstrapping_ephemeral_node` – assumes the ephemeral PXE node's single-node management cluster (Metal3 + CAPI) is already reachable via `MGMT_KUBECONFIG_PATH` (that bootstrap itself is site-specific out-of-band-boot + kubeadm territory and out of scope for this service today)
 3. `applying_bmh` / `waiting_for_hosts` – confirms registered `BareMetalHost` objects reach `available`
 4. `applying_cluster` – applies `Cluster` / `Metal3Cluster` / `KubeadmControlPlane` / `Metal3MachineTemplate` / `MachineDeployment`
 5. `waiting_for_control_plane` – polls the CAPI `Cluster` status for `ControlPlaneReady`
@@ -255,7 +255,7 @@ mechanism (`core/security.py`, the frontend's `lib/auth.tsx`) stays the
 same either way -- only how the token gets issued changes.
 
 Intentionally still left as extension points (environment-specific, can't
-be guessed generically): the ephemeral node's own PXE/SDI3 bootstrap
+be guessed generically): the ephemeral node's own out-of-band PXE bootstrap
 sequence, and the addon-install step.
 
 ## BMC credential storage
@@ -431,7 +431,7 @@ ones:
    then-current `Metal3MachineTemplate` CRD rejected. Fixed by only
    emitting the key when there's an actual value. Also caught in the
    same block: the default placeholder image URL still referenced a
-   customer-specific filename (`EricssonCCD.qcow2`) an earlier cleanup
+   customer-specific filename an earlier cleanup
    pass had missed.
 2. The v1beta1 -> v1beta2 migration (see above) failed Tier 1 twice
    before passing: v1beta2 made `checksum` *required* (the opposite

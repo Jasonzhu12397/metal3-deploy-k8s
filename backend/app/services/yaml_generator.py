@@ -1,8 +1,9 @@
 """
-Renders the three artefacts the user already hand-maintains today:
+Renders the three artefacts a hand-run bootstrap flow would otherwise
+require maintaining by hand:
 
   * bmh.yaml       -> one BareMetalHost + Secret per physical node
-  * k8s-config.yaml -> ccdadm/CAPI-style cluster spec (infra/kubernetes/addons)
+  * k8s-config.yaml -> CAPI-style cluster spec (infra/kubernetes/addons)
   * eph-net.yaml    -> network config for the ephemeral (PXE, in-memory) node
                        used to bootstrap the target cluster via Cluster API
 

@@ -75,9 +75,10 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
             deployment_id, DeploymentPhase.BOOTSTRAPPING_EPHEMERAL_NODE,
             "waiting for ephemeral management cluster to be reachable",
         )
-        # NOTE: bootstrapping the ephemeral node itself (PXE boot via SDI3 /
-        # netconf, kubeadm init, installing Metal3+CAPI) is environment
-        # specific and orchestrated by ccdadm/`cluster bootstrap` today;
+        # NOTE: bootstrapping the ephemeral node itself (PXE boot via the
+        # site's own out-of-band/network-boot mechanism, kubeadm init,
+        # installing Metal3+CAPI) is environment-specific and assumed to be
+        # handled by existing tooling outside this project today;
         # this task assumes that has completed and MGMT_KUBECONFIG_PATH
         # points at the resulting single-node management cluster.
 

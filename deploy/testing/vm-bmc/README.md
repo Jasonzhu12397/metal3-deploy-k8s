@@ -6,7 +6,7 @@
 
 ## 前置条件
 
-你现在这台 `ccdadm` 是 Windows 11 Hyper-V 里的 Linux VM——**这套东西要装在这台 Linux VM 里面**，属于嵌套虚拟化（VM 里面再跑 VM）。先确认这条件满足：
+你现在这台管理节点如果是 Windows 11 Hyper-V 里的 Linux VM，**这套东西要装在这台 Linux VM 里面**，属于嵌套虚拟化（VM 里面再跑 VM）。先确认这条件满足：
 
 1. **在 Windows 11 主机上**（不是在 Linux VM 里面），用管理员 PowerShell，VM 先关机，然后：
    ```powershell
@@ -31,7 +31,7 @@
    pip install -r requirements.txt --break-system-packages
    ```
 
-4. 一个 libvirt 网络，给虚拟机的启动网卡用，这个网络要能被你管理集群那边的 Ironic PXE/DHCP 服务覆盖到（或者你专门为测试搭一个隔离的 PXE 环境——这部分网络怎么接到你现有的 Ironic provisioning 网段，环境相关性太强，这里没法替你决定，需要你自己对着 `infra.networks.ccdprovsp`那类配置想清楚）。最简单起步：直接用 libvirt 默认的 `default` 网络（NAT），先验证流程通不通，再考虑接生产网络。
+4. 一个 libvirt 网络，给虚拟机的启动网卡用，这个网络要能被你管理集群那边的 Ironic PXE/DHCP 服务覆盖到（或者你专门为测试搭一个隔离的 PXE 环境——这部分网络怎么接到你现有的 Ironic provisioning 网段，环境相关性太强，这里没法替你决定，需要你自己对着自己环境里的网络配置想清楚）。最简单起步：直接用 libvirt 默认的 `default` 网络（NAT），先验证流程通不通，再考虑接生产网络。
 
 ## 跑起来
 
