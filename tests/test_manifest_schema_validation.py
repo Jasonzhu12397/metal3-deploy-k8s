@@ -345,6 +345,41 @@ def test_vsphere_provider_end_to_end(schemas):
     _assert_all_valid(docs, schemas)
 
 
+def test_vsphere_provider_with_no_optional_fields_supplied(schemas):
+    """The exact bug this project's live-apply-test.sh (see
+    deploy/testing/) caught that offline schema validation had missed
+    until this test was added: every prior vsphere test always supplied
+    a real `network` value, never exercising the "not provided, falls
+    back to the template's default('')" path. `{{ x | default('') }}`
+    without quotes renders as a bare empty YAML scalar when x is unset,
+    which parses as `null` -- and the real VSphereMachineTemplate CRD
+    requires `network.devices[].networkName` to be present (`required`),
+    which a real API server rejects for null with "Required value".
+    Confirmed via an actual live `kubectl apply` against a real k3s
+    cluster with the real CRD installed, not just this offline
+    jsonschema check -- see deploy/testing/live-apply-test.sh's
+    docstring for that verification. Fixed by quoting every
+    `default('')` in vsphere.yaml.j2/kubevirt.yaml.j2, matching what
+    checksum's fix already did in the metal3 template above."""
+    gen = YamlGeneratorService()
+    spec = {
+        "name": "vs-minimal",
+        "namespace": "metal3",
+        "infrastructure_provider": "vsphere",
+        "control_plane_count": 1,
+        "control_plane_endpoint": "192.0.2.1",
+        "control_plane_flavor": "",
+        "control_plane_image": "ubuntu-template",
+        "worker_pools": [],
+        "vsphere": {"server": "vcenter.local"},  # deliberately nothing else
+    }
+    docs = gen.parse_multi(gen.render_cluster_config(spec))
+    machine_template = next(d for d in docs if d["kind"] == "VSphereMachineTemplate")
+    network_name = machine_template["spec"]["template"]["spec"]["network"]["devices"][0]["networkName"]
+    assert network_name == "", "must render as an empty STRING, not null, or a real API server rejects it"
+    _assert_all_valid(docs, schemas)
+
+
 def test_kubevirt_provider_shared_capi_core_resources(schemas):
     """KubevirtCluster/KubevirtMachineTemplate (v1alpha1) aren't
     schema-validated here -- see fixtures README for why -- so this

@@ -10,6 +10,9 @@ deploy/nginx/letsencrypt/
 deploy/nginx/certbot-webroot/
 docker-compose.yml.backup.*
 
+# live-apply-test.sh's downloaded k3s binary + cluster state
+deploy/testing/.live-apply-work/
+
 # python
 __pycache__/
 *.pyc

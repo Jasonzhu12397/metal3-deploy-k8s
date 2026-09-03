@@ -42,7 +42,7 @@ metadata:
   name: {{ cluster.name }}
   namespace: {{ cluster.namespace }}
 spec:
-  server: {{ cluster.vsphere.server | default('') }}
+  server: "{{ cluster.vsphere.server | default('') }}"
   identityRef:
     kind: Secret
     name: {{ cluster.vsphere.credentials_secret | default(cluster.name ~ '-vsphere-credentials') }}
@@ -60,16 +60,16 @@ spec:
     spec:
       template: {{ cluster.control_plane_image }}
       cloneMode: {{ cluster.vsphere.clone_mode | default('linkedClone') }}
-      datacenter: {{ cluster.vsphere.datacenter | default('') }}
-      datastore: {{ cluster.vsphere.datastore | default('') }}
-      resourcePool: {{ cluster.vsphere.resource_pool | default('') }}
-      folder: {{ cluster.vsphere.folder | default('') }}
+      datacenter: "{{ cluster.vsphere.datacenter | default('') }}"
+      datastore: "{{ cluster.vsphere.datastore | default('') }}"
+      resourcePool: "{{ cluster.vsphere.resource_pool | default('') }}"
+      folder: "{{ cluster.vsphere.folder | default('') }}"
       diskGiB: {{ cluster.control_plane_disk_gib | default(60) }}
       numCPUs: {{ cluster.control_plane_num_cpus | default(4) }}
       memoryMiB: {{ cluster.control_plane_memory_mib | default(8192) }}
       network:
         devices:
-          - networkName: {{ cluster.vsphere.network | default('') }}
+          - networkName: "{{ cluster.vsphere.network | default('') }}"
             dhcp4: true
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta2
@@ -119,13 +119,13 @@ spec:
     spec:
       template: {{ pool.image }}
       cloneMode: {{ cluster.vsphere.clone_mode | default('linkedClone') }}
-      datacenter: {{ cluster.vsphere.datacenter | default('') }}
-      datastore: {{ cluster.vsphere.datastore | default('') }}
-      resourcePool: {{ cluster.vsphere.resource_pool | default('') }}
-      folder: {{ cluster.vsphere.folder | default('') }}
+      datacenter: "{{ cluster.vsphere.datacenter | default('') }}"
+      datastore: "{{ cluster.vsphere.datastore | default('') }}"
+      resourcePool: "{{ cluster.vsphere.resource_pool | default('') }}"
+      folder: "{{ cluster.vsphere.folder | default('') }}"
       network:
         devices:
-          - networkName: {{ cluster.vsphere.network | default('') }}
+          - networkName: "{{ cluster.vsphere.network | default('') }}"
             dhcp4: true
 ---
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta2

@@ -395,55 +395,79 @@ exact repo/tag/path each one came from.
 
 ## Manifest schema validation
 
-`tests/test_manifest_schema_validation.py` validates every manifest this
-project actually renders, for **all 5 infrastructure providers**,
-against the REAL upstream `CustomResourceDefinition` schemas (snapshotted
-in `backend/tests_data/crd_schemas/`, see that directory's own README for
-exactly where they came from, which contract version each targets, and
-how to refresh them) -- not a hand-approximated schema, the actual
-`openAPIV3Schema` a real Kubernetes API server would enforce on
-`kubectl apply`.
+Two tiers of this, from weakest to strongest guarantee:
 
-This exists because every other test in this project either checks "is
-this valid YAML" or mocks the Kubernetes layer entirely (see "What's
-stubbed vs. real" below) -- neither catches a manifest with the right
-field names and right structure but a value of the wrong *type*, or a
-reference field using a contract version's old shape. This gap was real,
-not hypothetical: building and then extending this test caught real bugs
-on two separate occasions:
+**Tier 1: offline schema validation** (`tests/test_manifest_schema_validation.py`,
+runs in every normal test invocation). Validates every manifest this
+project actually renders, for all 5 infrastructure providers, against
+the REAL upstream `CustomResourceDefinition` schemas (snapshotted in
+`backend/tests_data/crd_schemas/`, see that directory's own README for
+exactly where they came from) -- not a hand-approximated schema, the
+actual `openAPIV3Schema` a real Kubernetes API server would enforce.
+This is fast, needs no network access or running cluster, and runs as
+part of `make test` / CI.
+
+**Tier 2: live apply against a real cluster** (`deploy/testing/live-apply-test.sh`,
+NOT part of routine test runs -- downloads a real binary, starts a real
+background process, needs network access). Downloads
+[k3s](https://k3s.io/) (a single static binary bundling a real
+kube-apiserver + etcd + controller-manager + scheduler + kubelet -- no
+Docker required, which matters in environments where Docker genuinely
+isn't available), starts a real live control plane, installs the same
+real CRDs Tier 1 uses, and actually `kubectl apply`s this project's
+generated manifests against it. This exercises the real admission path
+a production cluster uses, not an offline schema snapshot -- catching
+things Tier 1 structurally cannot, like a required field silently
+present-but-`null` slipping past validation because no test's fixture
+data happened to trigger that exact code path.
+
+Both tiers were built because they were both, at different points,
+missing entirely, and every gap since found real bugs, not hypothetical
+ones:
 
 1. `checksum: {{ cluster.image_checksum | default('') }}` rendered
    `checksum: ` (empty) when no checksum was supplied, and YAML parses a
    bare/empty scalar as `null`, not empty string, which the
-   then-current `Metal3MachineTemplate` CRD rejected (`checksum`, when
-   present, had to be a string). Fixed by only emitting the key when
-   there's an actual value. Also caught, in the same block: the default
-   placeholder image URL still referenced a customer-specific filename
-   (`EricssonCCD.qcow2`) that an earlier cleanup pass had missed --
-   replaced with an unambiguous placeholder.
-2. The v1beta1 -> v1beta2 migration described above -- attempted once,
-   validated, and found still failing twice before it actually passed:
-   first because v1beta2 made `checksum` *required* (opposite of fix #1
-   above) so omitting it now fails differently than including it as
-   null did before, and second because `clusterConfiguration.apiServer.extraArgs`
-   turned out to need the same map->list conversion as
-   `kubeletExtraArgs` and was missed on the first pass. Both were caught
-   by this same test suite immediately, not discovered later.
+   then-current `Metal3MachineTemplate` CRD rejected. Fixed by only
+   emitting the key when there's an actual value. Also caught in the
+   same block: the default placeholder image URL still referenced a
+   customer-specific filename (`EricssonCCD.qcow2`) an earlier cleanup
+   pass had missed.
+2. The v1beta1 -> v1beta2 migration (see above) failed Tier 1 twice
+   before passing: v1beta2 made `checksum` *required* (the opposite
+   direction from fix #1, so omitting it now failed differently than
+   null had before), and `clusterConfiguration.apiServer.extraArgs`
+   needed the same map->list conversion as `kubeletExtraArgs`, missed on
+   the first pass.
+3. **Found only by Tier 2, after Tier 1 was passing cleanly**: every
+   vSphere test case up to that point always supplied a real `network`
+   value, so `networkName: {{ cluster.vsphere.network | default('') }}`
+   (unquoted, same bug shape as #1) never got exercised with an empty
+   value -- Tier 1's fixture data had a blind spot Tier 1 itself
+   couldn't see. A real `kubectl apply` against the real k3s cluster
+   rejected it outright with `Required value`. Fixed by quoting every
+   `default('')` in vsphere.yaml.j2 and kubevirt.yaml.j2 (11 + 2
+   occurrences), and added a Tier 1 regression test for the specific
+   "optional vSphere fields not supplied" case so this exact blind spot
+   can't reopen silently.
 
-What this test suite does NOT prove: that a real
-Ironic/baremetal-operator/CAPM3/CAPO/CAPV/CAPK controller would
-successfully *reconcile* these objects into an actual running cluster
-(that needs real infrastructure, or the
-`deploy/testing/vm-bmc/`/`deploy/testing/capd-quickstart/` paths -- see
-those directories' own READMEs for what's verified vs. not there), or
-every *semantic* constraint the real controllers enforce beyond
-structural schema validation (e.g. nothing checks that
-`infrastructureRef` points at a resource that actually exists -- that's
-reconciliation-time logic, not admission-time schema validation). What
-it DOES prove: a real Kubernetes API server's structural admission check
-would accept these objects, which is categorically stronger than "this
-parses as YAML" and is exactly the gap that let both bugs above ship
-unnoticed the first time.
+**What even Tier 2 does NOT prove**: that real
+Ironic/baremetal-operator/CAPM3/CAPO/CAPV/CAPK *controllers* (not just
+the API server's admission check) would successfully **reconcile**
+these objects into actual running infrastructure -- that needs the
+controllers' own container images running and watching the cluster,
+which wasn't attempted (would need registry access this environment
+doesn't have), or real hardware/a real cloud account actually
+provisioning something. Objects applied by Tier 2 sit un-reconciled
+(empty/pending status) since nothing is watching them -- that's
+expected, not a failure. For an even-more-real test that DOES exercise
+an actual controller reconciling actual (container-based) nodes, see
+`deploy/testing/capd-quickstart/` -- verified structurally in this
+project's own development environment but not run end-to-end there
+either, since that path needs Docker specifically (k3s doesn't), which
+also wasn't available. Real hardware remains the only way to verify the
+last mile: actual Ironic PXE-booting and provisioning a physical
+machine.
 
 ## Tests
 

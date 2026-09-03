@@ -81,7 +81,7 @@ spec:
                 name: {{ cluster.name }}-control-plane-boot
               spec:
                 storage:
-                  storageClassName: {{ cluster.kubevirt.storage_class_name | default('') }}
+                  storageClassName: "{{ cluster.kubevirt.storage_class_name | default('') }}"
                 source:
                   registry:
                     url: {{ cluster.control_plane_image }}
@@ -151,7 +151,7 @@ spec:
                 name: {{ cluster.name }}-{{ pool.name }}-boot
               spec:
                 storage:
-                  storageClassName: {{ cluster.kubevirt.storage_class_name | default('') }}
+                  storageClassName: "{{ cluster.kubevirt.storage_class_name | default('') }}"
                 source:
                   registry:
                     url: {{ pool.image }}
