@@ -2,21 +2,25 @@ import { useQuery } from "@tanstack/react-query";
 import { Cpu, LayoutGrid, Rows3, ServerCog } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../lib/api";
+import { useLanguage } from "../../lib/i18n";
 import { CoreMap } from "../../components/ui/CoreMap";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { StatusTag } from "../../components/ui/StatusTag";
 import { HardwareAssetDrawer } from "./HardwareAssetDrawer";
 import type { AssetStatus } from "../../lib/types";
 
-const STATUS_FILTERS: { value: AssetStatus | "all"; label: string }[] = [
-  { value: "all", label: "全部" },
-  { value: "available", label: "空闲" },
-  { value: "reserved", label: "已分配" },
-  { value: "provisioned", label: "运行中" },
-  { value: "discovered", label: "待校验" },
+type TranslationKey = Parameters<ReturnType<typeof useLanguage>["t"]>[0];
+
+const STATUS_FILTER_KEYS: { value: AssetStatus | "all"; key: TranslationKey }[] = [
+  { value: "all", key: "hw.status.all" },
+  { value: "available", key: "hw.status.available" },
+  { value: "reserved", key: "hw.status.reserved" },
+  { value: "provisioned", key: "hw.status.provisioned" },
+  { value: "discovered", key: "hw.status.discovered" },
 ];
 
 export default function HardwareAssetList() {
+  const { t } = useLanguage();
   const [view, setView] = useState<"rack" | "table">("rack");
   const [statusFilter, setStatusFilter] = useState<AssetStatus | "all">("all");
   const [gpuOnly, setGpuOnly] = useState(false);
@@ -34,12 +38,10 @@ export default function HardwareAssetList() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          物理机注册后，Ironic 会自动探测 CPU/内存/网卡/磁盘 —— 点开一台机器同步结果、修正网卡/磁盘角色。GPU 需要手动补录（标准探测不带 GPU 信息）。
-        </p>
+        <p className="text-xs text-[var(--color-ink-muted)]">{t("hw.hint")}</p>
         <div className="flex items-center gap-2">
           <div className="flex gap-1 rounded-lg border border-[var(--color-border-strong)] p-0.5">
-            {STATUS_FILTERS.map((f) => (
+            {STATUS_FILTER_KEYS.map((f) => (
               <button
                 key={f.value}
                 onClick={() => setStatusFilter(f.value)}
@@ -49,7 +51,7 @@ export default function HardwareAssetList() {
                     : "text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
                 }`}
               >
-                {f.label}
+                {t(f.key)}
               </button>
             ))}
           </div>
@@ -60,9 +62,9 @@ export default function HardwareAssetList() {
                 ? "border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white"
                 : "border-[var(--color-border-strong)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
             }`}
-            title="只看带 GPU 的机器"
+            title={t("hw.gpuOnlyTitle")}
           >
-            <Cpu size={12} /> 仅 GPU
+            <Cpu size={12} /> {t("hw.gpuOnly")}
           </button>
           <div className="flex gap-1 rounded-lg border border-[var(--color-border-strong)] p-0.5">
             <button
@@ -71,7 +73,7 @@ export default function HardwareAssetList() {
                 view === "rack" ? "bg-[var(--color-brand-500)] text-white" : "text-[var(--color-ink-muted)]"
               }`}
             >
-              <LayoutGrid size={12} /> 机架视图
+              <LayoutGrid size={12} /> {t("hw.viewRack")}
             </button>
             <button
               onClick={() => setView("table")}
@@ -79,21 +81,17 @@ export default function HardwareAssetList() {
                 view === "table" ? "bg-[var(--color-brand-500)] text-white" : "text-[var(--color-ink-muted)]"
               }`}
             >
-              <Rows3 size={12} /> 列表
+              <Rows3 size={12} /> {t("hw.viewTable")}
             </button>
           </div>
         </div>
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>
+        <p className="text-xs text-[var(--color-ink-faint)]">{t("hw.loading")}</p>
       ) : !assets || assets.length === 0 ? (
         <div className="card">
-          <EmptyState
-            icon={ServerCog}
-            title="还没有硬件资产"
-            hint='去"裸金属主机"注册一台物理机，Ironic 完成探测后会自动出现在这里。'
-          />
+          <EmptyState icon={ServerCog} title={t("hw.emptyTitle")} hint={t("hw.emptyHint")} />
         </div>
       ) : view === "rack" ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -107,7 +105,7 @@ export default function HardwareAssetList() {
                 <div className="min-w-0">
                   <div className="truncate text-sm font-bold">{a.name}</div>
                   <div className="truncate text-[11px] text-[var(--color-ink-faint)]">
-                    {a.vendor ?? "未知厂商"} {a.model ?? ""}
+                    {a.vendor ?? t("hw.unknownVendor")} {a.model ?? ""}
                   </div>
                 </div>
                 <StatusTag status={a.status} />
@@ -122,14 +120,12 @@ export default function HardwareAssetList() {
                   reservedPerSocket={0}
                 />
               ) : (
-                <p className="text-[11px] text-[var(--color-ink-faint)]">尚未同步 CPU 拓扑</p>
+                <p className="text-[11px] text-[var(--color-ink-faint)]">{t("hw.topologyNotSynced")}</p>
               )}
 
               <div className="flex items-center justify-between text-[11px] text-[var(--color-ink-muted)]">
-                <span>
-                  {a.cpu_sockets}×{a.cpu_cores_per_socket} 核 · {a.memory_gb}GB
-                </span>
-                <span>{a.nics.length} 网卡 · {a.disks.length} 磁盘</span>
+                <span>{t("hw.coresAndMemory", { sockets: a.cpu_sockets, cores: a.cpu_cores_per_socket, memory: a.memory_gb })}</span>
+                <span>{t("hw.nicsAndDisks", { nics: a.nics.length, disks: a.disks.length })}</span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {a.has_gpu && (
@@ -151,13 +147,13 @@ export default function HardwareAssetList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-muted)]">
-                <th className="px-4 py-2.5 font-medium">名称</th>
-                <th className="px-4 py-2.5 font-medium">状态</th>
-                <th className="px-4 py-2.5 font-medium">CPU</th>
-                <th className="px-4 py-2.5 font-medium">内存</th>
-                <th className="px-4 py-2.5 font-medium">GPU</th>
-                <th className="px-4 py-2.5 font-medium">网卡/磁盘</th>
-                <th className="px-4 py-2.5 font-medium">所属池</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colName")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colStatus")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colCpu")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colMemory")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colGpu")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colNicsDisks")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("hw.colPool")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">

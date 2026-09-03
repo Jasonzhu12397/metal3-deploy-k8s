@@ -4,8 +4,10 @@ import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { StatusTag } from "../../components/ui/StatusTag";
+import { useLanguage } from "../../lib/i18n";
 
 export default function DeploymentList() {
+  const { t } = useLanguage();
   const { data: deployments, isLoading } = useQuery({
     queryKey: ["deployments"],
     queryFn: () => api.deployments.list(),
@@ -16,20 +18,16 @@ export default function DeploymentList() {
   return (
     <div className="card overflow-hidden">
       {isLoading ? (
-        <p className="p-8 text-center text-xs text-[var(--color-ink-faint)]">加载中...</p>
+        <p className="p-8 text-center text-xs text-[var(--color-ink-faint)]">{t("dep.loading")}</p>
       ) : !deployments || deployments.length === 0 ? (
-        <EmptyState
-          icon={Rocket}
-          title="还没有部署记录"
-          hint='去某个集群的"部署"标签页点击「发起部署」。'
-        />
+        <EmptyState icon={Rocket} title={t("dep.emptyTitle")} hint={t("dep.emptyHint")} />
       ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-muted)]">
-              <th className="px-4 py-2.5 font-medium">部署 ID</th>
-              <th className="px-4 py-2.5 font-medium">集群</th>
-              <th className="px-4 py-2.5 font-medium">阶段</th>
+              <th className="px-4 py-2.5 font-medium">{t("dep.colId")}</th>
+              <th className="px-4 py-2.5 font-medium">{t("dep.colCluster")}</th>
+              <th className="px-4 py-2.5 font-medium">{t("dep.colPhase")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">

@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { StatusTag } from "../../components/ui/StatusTag";
 import { useDeploymentSocket } from "../../lib/useDeploymentSocket";
+import { useLanguage } from "../../lib/i18n";
 import type { DeploymentPhase } from "../../lib/types";
 
 const PHASE_ORDER: DeploymentPhase[] = [
@@ -18,20 +19,21 @@ const PHASE_ORDER: DeploymentPhase[] = [
   "complete",
 ];
 
-const PHASE_LABEL: Record<DeploymentPhase, string> = {
-  queued: "已排队",
-  generating_manifests: "渲染清单",
-  bootstrapping_ephemeral_node: "确认管理集群可达",
-  applying_bmh: "确认 BareMetalHost",
-  waiting_for_hosts: "等待主机就绪",
-  applying_cluster: "apply 集群资源",
-  waiting_for_control_plane: "等待控制面就绪",
-  installing_addons: "安装组件",
-  complete: "完成",
-  failed: "失败",
+const PHASE_LABEL_KEYS: Record<DeploymentPhase, `dep.phase.${DeploymentPhase}`> = {
+  queued: "dep.phase.queued",
+  generating_manifests: "dep.phase.generating_manifests",
+  bootstrapping_ephemeral_node: "dep.phase.bootstrapping_ephemeral_node",
+  applying_bmh: "dep.phase.applying_bmh",
+  waiting_for_hosts: "dep.phase.waiting_for_hosts",
+  applying_cluster: "dep.phase.applying_cluster",
+  waiting_for_control_plane: "dep.phase.waiting_for_control_plane",
+  installing_addons: "dep.phase.installing_addons",
+  complete: "dep.phase.complete",
+  failed: "dep.phase.failed",
 };
 
 export default function DeploymentDetail() {
+  const { t } = useLanguage();
   const { id = "" } = useParams();
   const { data: deployment } = useQuery({
     queryKey: ["deployment", id],
@@ -40,7 +42,7 @@ export default function DeploymentDetail() {
   });
   const { events, connected } = useDeploymentSocket(id);
 
-  if (!deployment) return <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>;
+  if (!deployment) return <p className="text-xs text-[var(--color-ink-faint)]">{t("dep.loadingDetail")}</p>;
 
   const currentPhase = deployment.phase;
   const currentIndex = PHASE_ORDER.indexOf(currentPhase);
@@ -52,14 +54,14 @@ export default function DeploymentDetail() {
         <div>
           <h2 className="mono text-base font-bold">{deployment.id}</h2>
           <p className="mt-1 text-xs text-[var(--color-ink-faint)]">
-            实时进度 {connected ? "已连接" : "未连接（展示最近一次已知状态）"}
+            {t("dep.liveProgress")} {connected ? t("dep.connected") : t("dep.disconnected")}
           </p>
         </div>
         <StatusTag status={deployment.phase} />
       </div>
 
       <div className="card p-5">
-        <h3 className="mb-4 text-sm font-semibold">部署阶段</h3>
+        <h3 className="mb-4 text-sm font-semibold">{t("dep.stages")}</h3>
         <ol className="flex flex-col gap-0.5">
           {PHASE_ORDER.map((phase, i) => {
             const done = !failed && currentIndex > i;
@@ -85,7 +87,7 @@ export default function DeploymentDetail() {
                       : "text-[var(--color-ink-faint)]"
                   }`}
                 >
-                  {PHASE_LABEL[phase]}
+                  {t(PHASE_LABEL_KEYS[phase])}
                 </span>
               </li>
             );
@@ -100,11 +102,9 @@ export default function DeploymentDetail() {
       </div>
 
       <div className="card p-5">
-        <h3 className="mb-3 text-sm font-semibold">事件日志</h3>
+        <h3 className="mb-3 text-sm font-semibold">{t("dep.eventLog")}</h3>
         {events.length === 0 ? (
-          <p className="text-xs text-[var(--color-ink-faint)]">
-            还没有收到 WebSocket 事件（如果部署已经完成，历史事件不会重放，看上面的阶段状态即可）
-          </p>
+          <p className="text-xs text-[var(--color-ink-faint)]">{t("dep.noEvents")}</p>
         ) : (
           <ul className="mono flex flex-col gap-1.5 text-xs">
             {events.map((e, i) => (

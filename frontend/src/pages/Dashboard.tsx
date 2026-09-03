@@ -3,6 +3,7 @@ import { AlertTriangle, Boxes, Rocket, ServerCog } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { StatusTag } from "../components/ui/StatusTag";
+import { useLanguage } from "../lib/i18n";
 import type { Cluster, Deployment, HardwareAsset } from "../lib/types";
 
 function StatCard({
@@ -33,6 +34,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
+  const { t } = useLanguage();
   const clustersQ = useQuery({ queryKey: ["clusters"], queryFn: api.clusters.list });
   const assetsQ = useQuery({ queryKey: ["hardware-assets"], queryFn: () => api.hardwareAssets.list() });
   const deploymentsQ = useQuery({ queryKey: ["deployments"], queryFn: () => api.deployments.list() });
@@ -53,30 +55,30 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Boxes}
-          label="集群总数"
+          label={t("dashboard.totalClusters")}
           value={clusters.length}
-          sub={`${readyClusters} 个已就绪`}
+          sub={t("dashboard.clustersReady", { count: readyClusters })}
           to="/clusters"
         />
         <StatCard
           icon={ServerCog}
-          label="硬件资产"
+          label={t("dashboard.hardwareAssets")}
           value={assets.length}
-          sub={`${availableAssets} 台空闲可分配`}
+          sub={t("dashboard.assetsAvailable", { count: availableAssets })}
           to="/hardware-assets"
         />
         <StatCard
           icon={Rocket}
-          label="进行中的部署"
+          label={t("dashboard.activeDeployments")}
           value={activeDeployments}
-          sub={`共 ${deployments.length} 次部署记录`}
+          sub={t("dashboard.totalDeploymentRecords", { count: deployments.length })}
           to="/deployments"
         />
         <StatCard
           icon={AlertTriangle}
-          label="失败的部署"
+          label={t("dashboard.failedDeployments")}
           value={failedDeployments}
-          sub="点击查看详情排查"
+          sub={t("dashboard.clickToInvestigate")}
           to="/deployments"
         />
       </div>
@@ -84,13 +86,13 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="card p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">最近的集群</h2>
+            <h2 className="text-sm font-semibold">{t("dashboard.recentClusters")}</h2>
             <Link to="/clusters" className="text-xs font-medium text-[var(--color-brand-600)]">
-              查看全部
+              {t("dashboard.viewAll")}
             </Link>
           </div>
           {clusters.length === 0 ? (
-            <p className="py-8 text-center text-xs text-[var(--color-ink-faint)]">还没有集群，去"集群管理"新建一个</p>
+            <p className="py-8 text-center text-xs text-[var(--color-ink-faint)]">{t("dashboard.noClustersYet")}</p>
           ) : (
             <ul className="flex flex-col divide-y divide-[var(--color-border)]">
               {clusters.slice(0, 6).map((c: Cluster) => (
@@ -99,7 +101,9 @@ export default function Dashboard() {
                     {c.name}
                   </Link>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-[var(--color-ink-faint)]">{c.control_plane_count} 控制面</span>
+                    <span className="text-xs text-[var(--color-ink-faint)]">
+                      {t("dashboard.controlPlaneCount", { count: c.control_plane_count })}
+                    </span>
                     <StatusTag status={c.status} />
                   </div>
                 </li>
@@ -110,13 +114,13 @@ export default function Dashboard() {
 
         <div className="card p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">最近的部署</h2>
+            <h2 className="text-sm font-semibold">{t("dashboard.recentDeployments")}</h2>
             <Link to="/deployments" className="text-xs font-medium text-[var(--color-brand-600)]">
-              查看全部
+              {t("dashboard.viewAll")}
             </Link>
           </div>
           {deployments.length === 0 ? (
-            <p className="py-8 text-center text-xs text-[var(--color-ink-faint)]">还没有部署记录</p>
+            <p className="py-8 text-center text-xs text-[var(--color-ink-faint)]">{t("dashboard.noDeploymentsYet")}</p>
           ) : (
             <ul className="flex flex-col divide-y divide-[var(--color-border)]">
               {deployments.slice(0, 6).map((d: Deployment) => (
@@ -141,6 +145,7 @@ export default function Dashboard() {
 }
 
 function AssetInventorySummary({ assets }: { assets: HardwareAsset[] }) {
+  const { t } = useLanguage();
   const byStatus = assets.reduce<Record<string, number>>((acc, a) => {
     acc[a.status] = (acc[a.status] ?? 0) + 1;
     return acc;
@@ -150,10 +155,10 @@ function AssetInventorySummary({ assets }: { assets: HardwareAsset[] }) {
 
   return (
     <div className="card p-5">
-      <h2 className="mb-4 text-sm font-semibold">硬件资产总览</h2>
+      <h2 className="mb-4 text-sm font-semibold">{t("dashboard.assetInventoryOverview")}</h2>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Metric label="总物理核数" value={totalCores} />
-        <Metric label="总内存" value={`${totalMemory.toLocaleString()} GB`} />
+        <Metric label={t("dashboard.totalPhysicalCores")} value={totalCores} />
+        <Metric label={t("dashboard.totalMemory")} value={`${totalMemory.toLocaleString()} GB`} />
         {Object.entries(byStatus).map(([status, count]) => (
           <div key={status} className="flex flex-col gap-1">
             <StatusTag status={status} />

@@ -9,16 +9,20 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { StatusTag } from "../../components/ui/StatusTag";
 import { AssignAssetsModal } from "./AssignAssetsModal";
 import type { HardwareAsset } from "../../lib/types";
+import { useLanguage } from "../../lib/i18n";
 
-const TABS = [
-  { key: "pools", label: "节点池", icon: Layers },
-  { key: "manifests", label: "生成的清单", icon: FileCode2 },
-  { key: "deployments", label: "部署", icon: Rocket },
-] as const;
+type TranslationKey = Parameters<ReturnType<typeof useLanguage>["t"]>[0];
+
+const TAB_KEYS: { key: "pools" | "manifests" | "deployments"; labelKey: TranslationKey; icon: typeof Layers }[] = [
+  { key: "pools", labelKey: "cd.tabPools", icon: Layers },
+  { key: "manifests", labelKey: "cd.tabManifests", icon: FileCode2 },
+  { key: "deployments", labelKey: "cd.tabDeployments", icon: Rocket },
+];
 
 export default function ClusterDetail() {
+  const { t } = useLanguage();
   const { id = "" } = useParams();
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("pools");
+  const [tab, setTab] = useState<"pools" | "manifests" | "deployments">("pools");
 
   const { data: cluster } = useQuery({ queryKey: ["cluster", id], queryFn: () => api.clusters.get(id) });
 
@@ -36,7 +40,7 @@ export default function ClusterDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, cluster?.infrastructure_provider]);
 
-  if (!cluster) return <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>;
+  if (!cluster) return <p className="text-xs text-[var(--color-ink-faint)]">{t("cd.loading")}</p>;
 
   const isCloud = cluster.infrastructure_provider !== "metal3";
 
@@ -52,14 +56,14 @@ export default function ClusterDetail() {
             </span>
           </div>
           <p className="mono mt-1 text-xs text-[var(--color-ink-muted)]">
-            {cluster.namespace} · {cluster.control_plane_count} 控制面 ·{" "}
-            {cluster.control_plane_endpoint ?? "未设置 endpoint"}
+            {cluster.namespace} · {t("cd.controlPlaneCount", { count: cluster.control_plane_count })} ·{" "}
+            {cluster.control_plane_endpoint ?? t("cd.noEndpoint")}
           </p>
         </div>
       </div>
 
       <div className="flex gap-1 border-b border-[var(--color-border)]">
-        {TABS.map(({ key, label, icon: Icon }) => (
+        {TAB_KEYS.map(({ key, labelKey, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -69,7 +73,7 @@ export default function ClusterDetail() {
                 : "border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
             }`}
           >
-            <Icon size={14} /> {label}
+            <Icon size={14} /> {t(labelKey)}
           </button>
         ))}
       </div>
@@ -82,21 +86,23 @@ export default function ClusterDetail() {
 }
 
 function CloudPoolsNotice({ provider }: { provider: string }) {
+  const { t } = useLanguage();
   return (
     <div className="card p-8 text-center">
-      <p className="text-sm font-medium">{provider} 集群没有"节点池"硬件分配这一步</p>
+      <p className="text-sm font-medium">{t("cd.cloudNoPoolsTitle", { provider })}</p>
       <p className="mx-auto mt-2 max-w-md text-xs text-[var(--color-ink-muted)]">
-        {provider === "openstack" && "OpenStack 集群的 worker 池（名称/数量/flavor/image）是建集群时直接声明的，不需要（也没有）物理硬件可选。"}
-        {provider === "vsphere" && "vSphere 集群的 worker 池（名称/数量/flavor/VM 模板）是建集群时直接声明的，不需要（也没有）物理硬件可选。"}
-        {provider === "kubevirt" && "KubeVirt 集群的 worker 池（名称/数量/flavor/DataVolume）是建集群时直接声明的，VM 跑在装了 KubeVirt 的管理集群里，不需要单独的物理硬件。"}
-        {provider === "docker" && "Docker（CAPD）集群的每个节点就是管理集群上的一个容器，不需要 flavor/image，也没有物理硬件可选——这是测试用途的 provider，不建议用于生产。"}
-        {" "}要改 worker 池配置，目前需要重建集群；直接去"生成的清单"标签页看渲染结果，或者去"部署"标签页发起部署。
+        {provider === "openstack" && t("cd.cloudNoPoolsOpenstack")}
+        {provider === "vsphere" && t("cd.cloudNoPoolsVsphere")}
+        {provider === "kubevirt" && t("cd.cloudNoPoolsKubevirt")}
+        {provider === "docker" && t("cd.cloudNoPoolsDocker")}
+        {t("cd.cloudNoPoolsSuffix")}
       </p>
     </div>
   );
 }
 
 function PoolsTab({ clusterId }: { clusterId: string }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [showAssign, setShowAssign] = useState(false);
   const { data: pools, isLoading } = useQuery({
@@ -124,21 +130,21 @@ function PoolsTab({ clusterId }: { clusterId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <button className="btn btn-primary" onClick={() => setShowAssign(true)}>
-          <Plus size={14} /> 分配硬件到节点池
+          <Plus size={14} /> {t("cd.assignHardwareToPool")}
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>
+        <p className="text-xs text-[var(--color-ink-faint)]">{t("cd.loading")}</p>
       ) : poolEntries.length === 0 ? (
         <div className="card">
           <EmptyState
             icon={Layers}
-            title="这个集群还没有节点池"
-            hint="从空闲的硬件资产库存里挑机器，指定角色（控制面/worker）和 CPU 预留策略，组成一个节点池。"
+            title={t("cd.noPoolsTitle")}
+            hint={t("cd.noPoolsHint")}
             action={
               <button className="btn btn-primary mt-2" onClick={() => setShowAssign(true)}>
-                <Plus size={14} /> 分配硬件到节点池
+                <Plus size={14} /> {t("cd.assignHardwareToPool")}
               </button>
             }
           />
@@ -154,11 +160,11 @@ function PoolsTab({ clusterId }: { clusterId: string }) {
                 <span className="rounded-full bg-[var(--color-idle-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-ink-muted)]">
                   {assignments[0]?.role ?? "worker"}
                 </span>
-                <span className="text-xs text-[var(--color-ink-faint)]">{assignments.length} 台</span>
+                <span className="text-xs text-[var(--color-ink-faint)]">{t("cd.machineCount", { count: assignments.length })}</span>
                 {isControlPlane && (
                   <span className="text-[11px] text-[var(--color-ink-faint)]">
-                    · 驱动 KubeadmControlPlane 副本数，不会生成 MachineDeployment
-                    {assignments.length === 1 && "（单机 = single-node 集群，会自动去掉控制面 taint）"}
+                    {t("cd.controlPlaneDriverNote")}
+                    {assignments.length === 1 && t("cd.singleNodeNote")}
                   </span>
                 )}
               </div>
@@ -177,8 +183,7 @@ function PoolsTab({ clusterId }: { clusterId: string }) {
                         reserved_cpus: {a.computed_reserved_cpus || "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-[var(--color-ink-faint)]">
-                        隔离可用 {a.computed_isolated_cpu_count} 核 · {a.hugepage_type} ×{" "}
-                        {a.hugepage_count_1gb}
+                        {t("cd.isolatedCoresNote", { count: a.computed_isolated_cpu_count, type: a.hugepage_type, n: a.hugepage_count_1gb })}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -193,7 +198,7 @@ function PoolsTab({ clusterId }: { clusterId: string }) {
                       )}
                       <button
                         className="btn-ghost btn !p-1.5"
-                        title="从节点池移除"
+                        title={t("cd.removeFromPool")}
                         onClick={() => unassignMutation.mutate({ pool: poolName, assetId: a.asset_id })}
                       >
                         <Trash2 size={14} />
@@ -214,6 +219,7 @@ function PoolsTab({ clusterId }: { clusterId: string }) {
 }
 
 function ManifestsTab({ clusterId }: { clusterId: string }) {
+  const { t } = useLanguage();
   const [activeYaml, setActiveYaml] = useState<"bmh" | "cluster" | string>("bmh");
 
   const generateMutation = useMutation({
@@ -225,11 +231,9 @@ function ManifestsTab({ clusterId }: { clusterId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="card flex items-center justify-between p-4">
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          从已分配的硬件资产直接渲染 bmh.yaml / 集群配置 / 每台机器的网络绑定策略 —— 纯预览，不会 apply 到管理集群。
-        </p>
+        <p className="text-xs text-[var(--color-ink-muted)]">{t("cd.manifestsHint")}</p>
         <button className="btn btn-primary shrink-0" onClick={() => generateMutation.mutate()}>
-          <Settings2 size={14} /> {generateMutation.isPending ? "生成中..." : "生成清单"}
+          <Settings2 size={14} /> {generateMutation.isPending ? t("cd.generating") : t("cd.generateManifests")}
         </button>
       </div>
 
@@ -244,7 +248,7 @@ function ManifestsTab({ clusterId }: { clusterId: string }) {
             <TabPill
               active={activeYaml === "cluster"}
               onClick={() => setActiveYaml("cluster")}
-              label="集群配置 (CAPI)"
+              label={t("cd.clusterConfigTab")}
             />
             {Object.keys(bundle.network_policies).map((key) => (
               <TabPill key={key} active={activeYaml === key} onClick={() => setActiveYaml(key)} label={key} />
@@ -281,6 +285,7 @@ function TabPill({ active, onClick, label }: { active: boolean; onClick: () => v
 }
 
 function DeploymentsTab({ clusterId }: { clusterId: string }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const { data: deployments, isLoading } = useQuery({
     queryKey: ["deployments", clusterId],
@@ -296,7 +301,7 @@ function DeploymentsTab({ clusterId }: { clusterId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <button className="btn btn-primary" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
-          <Rocket size={14} /> {startMutation.isPending ? "提交中..." : "发起部署"}
+          <Rocket size={14} /> {startMutation.isPending ? t("cd.startingDeployment") : t("cd.startDeployment")}
         </button>
       </div>
       {startMutation.isError && (
@@ -305,9 +310,9 @@ function DeploymentsTab({ clusterId }: { clusterId: string }) {
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <p className="p-8 text-center text-xs text-[var(--color-ink-faint)]">加载中...</p>
+          <p className="p-8 text-center text-xs text-[var(--color-ink-faint)]">{t("cd.loading")}</p>
         ) : !deployments || deployments.length === 0 ? (
-          <EmptyState icon={Rocket} title="还没有部署过这个集群" hint="点击右上角「发起部署」把当前节点池配置 apply 到管理集群。" />
+          <EmptyState icon={Rocket} title={t("cd.notDeployedYetTitle")} hint={t("cd.notDeployedYetHint")} />
         ) : (
           <ul className="divide-y divide-[var(--color-border)]">
             {deployments.map((d) => (

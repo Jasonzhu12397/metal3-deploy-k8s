@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useLanguage } from "../lib/i18n";
 
 export default function LoginPage() {
   const { isAuthenticated, login } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState("");
@@ -25,7 +27,7 @@ export default function LoginPage() {
       const from = (location.state as { from?: string } | null)?.from ?? "/";
       navigate(from, { replace: true });
     } catch {
-      setError("用户名或密码不对");
+      setError(t("login.error"));
     } finally {
       setLoading(false);
     }
@@ -39,14 +41,14 @@ export default function LoginPage() {
             M3
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-white">Metal3 控制台</div>
-            <div className="text-xs text-[#7b86a8]">登录以继续</div>
+            <div className="text-lg font-bold text-white">{t("app.name")}</div>
+            <div className="text-xs text-[#7b86a8]">{t("login.subtitle")}</div>
           </div>
         </div>
 
         <form onSubmit={onSubmit} className="card flex flex-col gap-3.5 p-6">
           <div>
-            <label className="label">用户名</label>
+            <label className="label">{t("login.username")}</label>
             <input
               className="input"
               autoFocus
@@ -57,7 +59,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="label">密码</label>
+            <label className="label">{t("login.password")}</label>
             <input
               className="input"
               type="password"
@@ -71,13 +73,11 @@ export default function LoginPage() {
           {error && <p className="text-xs text-[var(--color-danger)]">{error}</p>}
 
           <button type="submit" className="btn btn-primary mt-1 justify-center" disabled={loading}>
-            {loading ? "登录中..." : "登录"}
+            {loading ? t("login.submitting") : t("login.submit")}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-[11px] text-[#5b6488]">
-          首次启动的管理员账号来自服务端启动日志 —— 见 INSTALL.md
-        </p>
+        <p className="mt-4 text-center text-[11px] text-[#5b6488]">{t("login.firstAdminHint")}</p>
       </div>
     </div>
   );

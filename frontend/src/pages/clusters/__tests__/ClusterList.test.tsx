@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { LanguageProvider } from '../../../lib/i18n'
 import ClusterList from '../ClusterList'
 
 // This is the exact area where two real bugs shipped together (see
@@ -27,10 +28,18 @@ vi.mock('../../../lib/api', () => ({
 }))
 
 function renderClusterList() {
+  // Force Chinese: jsdom's navigator.language defaults to "en-US", so
+  // without this the component under test would render in English (the
+  // i18n system's fallback for a non-Chinese browser locale) and every
+  // Chinese-text assertion below would fail for a reason that has
+  // nothing to do with what this file actually tests.
+  localStorage.setItem('metal3_console_language', 'zh')
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <ClusterList />
+      <LanguageProvider>
+        <ClusterList />
+      </LanguageProvider>
     </QueryClientProvider>,
   )
 }
@@ -44,6 +53,7 @@ async function openCreateModal() {
 describe('CreateClusterModal provider-conditional fields', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
   })
 
   it('metal3 (the default) shows neither flavor/image fields nor the cloud provider config block', async () => {

@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Power, PowerOff, Server } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../lib/api";
+import { useLanguage } from "../../lib/i18n";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
 import type { BareMetalHostCreate } from "../../lib/types";
 
 export default function BareMetalHostList() {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [showRegister, setShowRegister] = useState(false);
   const { data: hosts, isLoading } = useQuery({
@@ -23,25 +25,23 @@ export default function BareMetalHostList() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          注册后 BMC 凭证立刻写成 Kubernetes Secret，不会存进这个系统自己的数据库。注册成功后 Ironic 会自动开始硬件探测。
-        </p>
+        <p className="text-xs text-[var(--color-ink-muted)]">{t("bmh.hint")}</p>
         <button className="btn btn-primary" onClick={() => setShowRegister(true)}>
-          <Plus size={14} /> 注册主机
+          <Plus size={14} /> {t("bmh.register")}
         </button>
       </div>
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <p className="p-8 text-center text-xs text-[var(--color-ink-faint)]">加载中...</p>
+          <p className="p-8 text-center text-xs text-[var(--color-ink-faint)]">{t("bmh.loading")}</p>
         ) : !hosts || hosts.length === 0 ? (
           <EmptyState
             icon={Server}
-            title="还没有注册裸金属主机"
-            hint="填入 BMC 地址、启动网卡 MAC 和凭证，注册后交给 baremetal-operator + Ironic 去探测和管理。"
+            title={t("bmh.emptyTitle")}
+            hint={t("bmh.emptyHint")}
             action={
               <button className="btn btn-primary mt-2" onClick={() => setShowRegister(true)}>
-                <Plus size={14} /> 注册主机
+                <Plus size={14} /> {t("bmh.register")}
               </button>
             }
           />
@@ -49,11 +49,11 @@ export default function BareMetalHostList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-muted)]">
-                <th className="px-4 py-2.5 font-medium">名称</th>
-                <th className="px-4 py-2.5 font-medium">节点池</th>
-                <th className="px-4 py-2.5 font-medium">BMC 地址</th>
-                <th className="px-4 py-2.5 font-medium">状态</th>
-                <th className="px-4 py-2.5 font-medium text-right">电源</th>
+                <th className="px-4 py-2.5 font-medium">{t("bmh.colName")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("bmh.colPool")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("bmh.colBmcAddress")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("bmh.colStatus")}</th>
+                <th className="px-4 py-2.5 font-medium text-right">{t("bmh.colPower")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
@@ -77,7 +77,7 @@ export default function BareMetalHostList() {
                     <td className="px-4 py-3 text-right">
                       <button
                         className="btn-ghost btn !p-1.5"
-                        title={online ? "关机" : "开机"}
+                        title={online ? t("bmh.powerOff") : t("bmh.powerOn")}
                         onClick={() => powerMutation.mutate({ name, online: !online })}
                       >
                         {online ? <PowerOff size={14} /> : <Power size={14} />}
@@ -97,6 +97,7 @@ export default function BareMetalHostList() {
 }
 
 function RegisterHostModal({ onClose }: { onClose: () => void }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [form, setForm] = useState<BareMetalHostCreate>({
     name: "",
@@ -120,7 +121,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <Modal title="注册裸金属主机" onClose={onClose} width={560}>
+    <Modal title={t("bmh.modalTitle")} onClose={onClose} width={560}>
       <form
         className="flex flex-col gap-3.5"
         onSubmit={(e) => {
@@ -131,7 +132,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
       >
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">主机名称</label>
+            <label className="label">{t("bmh.hostName")}</label>
             <input
               className="input"
               required
@@ -141,7 +142,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="label">节点池</label>
+            <label className="label">{t("bmh.nodePool")}</label>
             <input
               className="input"
               required
@@ -151,7 +152,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div>
-          <label className="label">BMC 地址</label>
+          <label className="label">{t("bmh.bmcAddress")}</label>
           <input
             className="input mono"
             required
@@ -161,7 +162,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
           />
         </div>
         <div>
-          <label className="label">启动网卡 MAC 地址</label>
+          <label className="label">{t("bmh.bootMac")}</label>
           <input
             className="input mono"
             required
@@ -173,7 +174,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">BMC 用户名</label>
+            <label className="label">{t("bmh.bmcUsername")}</label>
             <input
               className="input"
               required
@@ -182,7 +183,7 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="label">BMC 密码</label>
+            <label className="label">{t("bmh.bmcPassword")}</label>
             <input
               className="input"
               required
@@ -192,18 +193,16 @@ function RegisterHostModal({ onClose }: { onClose: () => void }) {
             />
           </div>
         </div>
-        <p className="text-[11px] text-[var(--color-ink-faint)]">
-          密码只会在这一次请求里出现，提交后立刻写成 Kubernetes Secret，本系统不落库。
-        </p>
+        <p className="text-[11px] text-[var(--color-ink-faint)]">{t("bmh.passwordHint")}</p>
 
         {error && <p className="text-xs text-[var(--color-danger)]">{error}</p>}
 
         <div className="mt-1 flex justify-end gap-2">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
-            取消
+            {t("bmh.cancel")}
           </button>
           <button type="submit" className="btn btn-primary" disabled={registerMutation.isPending}>
-            {registerMutation.isPending ? "注册中..." : "注册"}
+            {registerMutation.isPending ? t("bmh.submitting") : t("bmh.submit")}
           </button>
         </div>
       </form>

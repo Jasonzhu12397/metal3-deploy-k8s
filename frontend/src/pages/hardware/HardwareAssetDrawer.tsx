@@ -5,11 +5,13 @@ import { api, ApiError } from "../../lib/api";
 import { CoreMap } from "../../components/ui/CoreMap";
 import { StatusTag } from "../../components/ui/StatusTag";
 import type { DiskRole, DiskSpec, HardwareAsset, NicRole, NicSpec } from "../../lib/types";
+import { useLanguage } from "../../lib/i18n";
 
 const NIC_ROLES: NicRole[] = ["control", "data", "storage", "sriov", "unassigned"];
 const DISK_ROLES: DiskRole[] = ["os", "ceph_osd", "ceph_journal", "local_storage", "unassigned"];
 
 export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onClose: () => void }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const { data: asset } = useQuery({
     queryKey: ["hardware-asset", assetId],
@@ -66,7 +68,7 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                CPU / 内存
+                {t("hwd.cpuMemory")}
               </h4>
               <button
                 className="btn btn-secondary !py-1 !text-[11px]"
@@ -74,16 +76,16 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
                 disabled={syncMutation.isPending}
               >
                 <RefreshCw size={12} className={syncMutation.isPending ? "animate-spin" : ""} />
-                从 Ironic 同步
+                {t("hwd.syncFromIronic")}
               </button>
             </div>
             {syncMutation.isError && (
               <p className="mb-2 text-[11px] text-[var(--color-danger)]">{(syncMutation.error as Error).message}</p>
             )}
             <div className="grid grid-cols-3 gap-2 text-xs">
-              <Field label="型号" value={asset.cpu_model ?? "—"} />
-              <Field label="拓扑" value={`${asset.cpu_sockets}×${asset.cpu_cores_per_socket}×${asset.cpu_threads_per_core}t`} />
-              <Field label="内存" value={`${asset.memory_gb} GB`} />
+              <Field label={t("hwd.model")} value={asset.cpu_model ?? "—"} />
+              <Field label={t("hwd.topology")} value={`${asset.cpu_sockets}×${asset.cpu_cores_per_socket}×${asset.cpu_threads_per_core}t`} />
+              <Field label={t("hwd.memory")} value={`${asset.memory_gb} GB`} />
             </div>
             {asset.cpu_sockets > 0 && asset.cpu_cores_per_socket > 0 && (
               <div className="mt-3 rounded-lg bg-[var(--color-bg)] p-3">
@@ -93,19 +95,17 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
                   threadsPerCore={asset.cpu_threads_per_core}
                   reservedPerSocket={0}
                 />
-                <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">
-                  全部标记为"业务可用" —— 实际预留数由分配到的节点池决定
-                </p>
+                <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">{t("hwd.allUsableNote")}</p>
               </div>
             )}
           </section>
 
           <section>
             <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
-              网卡（{nics.length}）
+              {t("hwd.nics", { count: nics.length })}
             </h4>
             {nics.length === 0 ? (
-              <p className="text-xs text-[var(--color-ink-faint)]">还没有网卡数据，先从 Ironic 同步</p>
+              <p className="text-xs text-[var(--color-ink-faint)]">{t("hwd.noNicsYet")}</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {nics.map((nic, i) => (
@@ -145,10 +145,10 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
 
           <section>
             <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
-              磁盘（{disks.length}）
+              {t("hwd.disks", { count: disks.length })}
             </h4>
             {disks.length === 0 ? (
-              <p className="text-xs text-[var(--color-ink-faint)]">还没有磁盘数据，先从 Ironic 同步</p>
+              <p className="text-xs text-[var(--color-ink-faint)]">{t("hwd.noDisksYet")}</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {disks.map((disk, i) => (
@@ -190,14 +190,14 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
 
         <div className="sticky bottom-0 mt-auto flex justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-3.5">
           <button className="btn btn-secondary" onClick={onClose}>
-            关闭
+            {t("hwd.close")}
           </button>
           <button
             className="btn btn-primary"
             disabled={!dirty || saveRolesMutation.isPending}
             onClick={() => saveRolesMutation.mutate()}
           >
-            {saveRolesMutation.isPending ? "保存中..." : "保存角色分配"}
+            {saveRolesMutation.isPending ? t("hwd.saving") : t("hwd.saveRoles")}
           </button>
         </div>
       </div>
@@ -206,6 +206,7 @@ export function HardwareAssetDrawer({ assetId, onClose }: { assetId: string; onC
 }
 
 function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [gpuModel, setGpuModel] = useState(asset.gpu_model ?? "");
@@ -229,10 +230,10 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">GPU</h4>
+        <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">{t("hwd.gpu")}</h4>
         {!editing && (
           <button className="btn-ghost btn !py-1 !text-[11px]" onClick={() => setEditing(true)}>
-            {asset.has_gpu ? "编辑" : "补录"}
+            {asset.has_gpu ? t("hwd.edit") : t("hwd.addInfo")}
           </button>
         )}
       </div>
@@ -241,12 +242,10 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
         (asset.has_gpu ? (
           <p className="text-xs">
             {asset.gpu_count}× <span className="mono font-medium">{asset.gpu_model}</span>
-            {asset.gpu_memory_gb && <span className="text-[var(--color-ink-faint)]"> · {asset.gpu_memory_gb}GB/卡</span>}
+            {asset.gpu_memory_gb && <span className="text-[var(--color-ink-faint)]">{t("hwd.gpuPerCard", { mem: asset.gpu_memory_gb })}</span>}
           </p>
         ) : (
-          <p className="text-xs text-[var(--color-ink-faint)]">
-            未录入 —— 标准硬件探测（sync-from-ironic）不包含 GPU 信息，需要手动补录才能把这台机器分到 GPU 节点池。
-          </p>
+          <p className="text-xs text-[var(--color-ink-faint)]">{t("hwd.gpuNotRecorded")}</p>
         ))}
 
       {editing && (
@@ -258,7 +257,7 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
           }}
         >
           <div>
-            <label className="label">GPU 型号</label>
+            <label className="label">{t("hwd.gpuModel")}</label>
             <input
               className="input"
               placeholder="NVIDIA H100 80GB"
@@ -268,7 +267,7 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="label">数量</label>
+              <label className="label">{t("hwd.gpuCount")}</label>
               <input
                 className="input"
                 type="number"
@@ -278,7 +277,7 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
               />
             </div>
             <div>
-              <label className="label">单卡显存 (GB)</label>
+              <label className="label">{t("hwd.gpuMemoryPerCard")}</label>
               <input
                 className="input"
                 type="number"
@@ -290,10 +289,10 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn btn-secondary !py-1 !text-[11px]" onClick={() => setEditing(false)}>
-              取消
+              {t("hwd.cancel")}
             </button>
             <button type="submit" className="btn btn-primary !py-1 !text-[11px]" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? "保存中..." : "保存"}
+              {saveMutation.isPending ? t("hwd.saving") : t("hwd.save")}
             </button>
           </div>
         </form>
@@ -303,6 +302,7 @@ function GpuSection({ asset, assetId }: { asset: HardwareAsset; assetId: string 
 }
 
 function BmcCredentialsSection({ asset, assetId }: { asset: HardwareAsset; assetId: string }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(asset.bmc_username ?? "");
@@ -330,24 +330,24 @@ function BmcCredentialsSection({ asset, assetId }: { asset: HardwareAsset; asset
     <section>
       <div className="mb-2 flex items-center justify-between">
         <h4 className="text-xs font-bold uppercase tracking-wide text-[var(--color-ink-muted)]">
-          BMC 凭证
+          {t("hwd.bmcCredentials")}
         </h4>
         {asset.has_bmc_credentials && !editing && (
           <button
             className="btn btn-secondary !py-1 !text-[11px]"
             onClick={() => resyncMutation.mutate()}
             disabled={resyncMutation.isPending}
-            title="从加密存储解密，重新写一份 Kubernetes Secret"
+            title={t("hwd.resyncTitle")}
           >
             <RefreshCw size={12} className={resyncMutation.isPending ? "animate-spin" : ""} />
-            重建 Secret
+            {t("hwd.rebuildSecret")}
           </button>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <Field label="BMC 地址" value={asset.bmc_address ?? "—"} mono />
-        <Field label="Boot MAC" value={asset.boot_mac_address ?? "—"} mono />
+        <Field label={t("hwd.bmcAddress")} value={asset.bmc_address ?? "—"} mono />
+        <Field label={t("hwd.bootMac")} value={asset.boot_mac_address ?? "—"} mono />
       </div>
 
       <div className="mt-2 flex items-center justify-between rounded-lg bg-[var(--color-bg)] px-2.5 py-2">
@@ -356,22 +356,22 @@ function BmcCredentialsSection({ asset, assetId }: { asset: HardwareAsset; asset
           {asset.has_bmc_credentials ? (
             <span className="flex items-center gap-1 text-xs">
               <Check size={12} className="text-[var(--color-success)]" />
-              已加密存储 · 用户名 <span className="mono font-medium">{asset.bmc_username}</span>
+              {t("hwd.encryptedStored")}<span className="mono font-medium">{asset.bmc_username}</span>
             </span>
           ) : (
-            <span className="text-xs text-[var(--color-ink-faint)]">未存储凭证</span>
+            <span className="text-xs text-[var(--color-ink-faint)]">{t("hwd.noCredentialsStored")}</span>
           )}
         </div>
         {!editing && (
           <button className="btn-ghost btn !py-1 !text-[11px]" onClick={() => setEditing(true)}>
-            {asset.has_bmc_credentials ? "更新" : "设置"}
+            {asset.has_bmc_credentials ? t("hwd.update") : t("hwd.set")}
           </button>
         )}
       </div>
 
       {resyncMutation.isSuccess && (
         <p className="mt-1.5 text-[11px] text-[var(--color-success)]">
-          已重新写入 Secret：{resyncMutation.data.secret_name}
+          {t("hwd.secretRewritten", { name: resyncMutation.data.secret_name })}
         </p>
       )}
       {resyncMutation.isError && (
@@ -389,23 +389,21 @@ function BmcCredentialsSection({ asset, assetId }: { asset: HardwareAsset; asset
           }}
         >
           <div>
-            <label className="label">用户名</label>
+            <label className="label">{t("hwd.username")}</label>
             <input className="input" required value={username} onChange={(e) => setUsername(e.target.value)} />
           </div>
           <div>
-            <label className="label">密码</label>
+            <label className="label">{t("hwd.password")}</label>
             <input
               className="input"
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={asset.has_bmc_credentials ? "输入新密码以更新" : ""}
+              placeholder={asset.has_bmc_credentials ? t("hwd.newPasswordPlaceholder") : ""}
             />
           </div>
-          <p className="text-[11px] text-[var(--color-ink-faint)]">
-            提交后立刻加密存库并重写 Kubernetes Secret；密码本身不会再被任何接口返回。
-          </p>
+          <p className="text-[11px] text-[var(--color-ink-faint)]">{t("hwd.bmcSaveHint")}</p>
           {setCredsMutation.isError && (
             <p className="text-[11px] text-[var(--color-danger)]">
               {(setCredsMutation.error as ApiError).message}
@@ -420,10 +418,10 @@ function BmcCredentialsSection({ asset, assetId }: { asset: HardwareAsset; asset
                 setPassword("");
               }}
             >
-              取消
+              {t("hwd.cancel")}
             </button>
             <button type="submit" className="btn btn-primary !py-1 !text-[11px]" disabled={setCredsMutation.isPending}>
-              {setCredsMutation.isPending ? "保存中..." : "保存"}
+              {setCredsMutation.isPending ? t("hwd.saving") : t("hwd.save")}
             </button>
           </div>
         </form>

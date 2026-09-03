@@ -7,8 +7,12 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
 import { StatusTag } from "../../components/ui/StatusTag";
 import type { ClusterCreate } from "../../lib/types";
+import { useLanguage } from "../../lib/i18n";
+
+type TranslationKey = Parameters<ReturnType<typeof useLanguage>["t"]>[0];
 
 export default function ClusterList() {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const { data: clusters, isLoading } = useQuery({ queryKey: ["clusters"], queryFn: api.clusters.list });
@@ -21,25 +25,23 @@ export default function ClusterList() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          定义要通过 Cluster API + Metal3 部署的目标集群。建好之后去"硬件资产"里把物理机分配进它的节点池。
-        </p>
+        <p className="text-xs text-[var(--color-ink-muted)]">{t("cl.hint")}</p>
         <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-          <Plus size={14} /> 新建集群
+          <Plus size={14} /> {t("cl.newCluster")}
         </button>
       </div>
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <div className="p-10 text-center text-xs text-[var(--color-ink-faint)]">加载中...</div>
+          <div className="p-10 text-center text-xs text-[var(--color-ink-faint)]">{t("cl.loading")}</div>
         ) : !clusters || clusters.length === 0 ? (
           <EmptyState
             icon={Boxes}
-            title="还没有集群"
-            hint="点击右上角「新建集群」，定义名称、控制面数量和网段，然后就可以往它的节点池里分配硬件了。"
+            title={t("cl.emptyTitle")}
+            hint={t("cl.emptyHint")}
             action={
               <button className="btn btn-primary mt-2" onClick={() => setShowCreate(true)}>
-                <Plus size={14} /> 新建集群
+                <Plus size={14} /> {t("cl.newCluster")}
               </button>
             }
           />
@@ -47,13 +49,13 @@ export default function ClusterList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-muted)]">
-                <th className="px-4 py-2.5 font-medium">名称</th>
-                <th className="px-4 py-2.5 font-medium">部署目标</th>
-                <th className="px-4 py-2.5 font-medium">状态</th>
-                <th className="px-4 py-2.5 font-medium">命名空间</th>
-                <th className="px-4 py-2.5 font-medium">控制面数量</th>
-                <th className="px-4 py-2.5 font-medium">控制面 Endpoint</th>
-                <th className="px-4 py-2.5 font-medium text-right">操作</th>
+                <th className="px-4 py-2.5 font-medium">{t("cl.colName")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("cl.colProvider")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("cl.colStatus")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("cl.colNamespace")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("cl.colControlPlaneCount")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("cl.colControlPlaneEndpoint")}</th>
+                <th className="px-4 py-2.5 font-medium text-right">{t("cl.colActions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
@@ -80,9 +82,9 @@ export default function ClusterList() {
                   <td className="px-4 py-3 text-right">
                     <button
                       className="btn-ghost btn !p-1.5"
-                      title="删除"
+                      title={t("cl.delete")}
                       onClick={() => {
-                        if (confirm(`确定删除集群 "${c.name}"？这不会撤销已经 apply 到管理集群的资源。`)) {
+                        if (confirm(t("cl.confirmDelete", { name: c.name }))) {
                           removeMutation.mutate(c.id);
                         }
                       }}
@@ -102,15 +104,16 @@ export default function ClusterList() {
   );
 }
 
-const PROVIDERS: { value: NonNullable<ClusterCreate["infrastructure_provider"]>; label: string; hint: string }[] = [
-  { value: "metal3", label: "Metal3（裸金属）", hint: "从硬件资产库存里挑物理机，走 Ironic + baremetal-operator" },
-  { value: "openstack", label: "OpenStack（CAPO）", hint: "VM 跑在现有 OpenStack 云上，按 flavor/image 声明" },
-  { value: "vsphere", label: "vSphere（CAPV）", hint: "VM 跑在 vCenter 上，按 flavor/image（VM 模板）声明" },
-  { value: "kubevirt", label: "KubeVirt（CAPK，通用 KVM）", hint: "VM 作为 KubeVirt VirtualMachine 跑在一个已装 KubeVirt 的管理集群里" },
-  { value: "docker", label: "Docker（CAPD，测试用）", hint: "每个节点就是一个容器，不需要任何真实基础设施——用来验证部署流程本身，不要用于生产" },
+const PROVIDERS: { value: NonNullable<ClusterCreate["infrastructure_provider"]>; labelKey: TranslationKey; hintKey: TranslationKey }[] = [
+  { value: "metal3", labelKey: "cl.providerMetal3", hintKey: "cl.providerMetal3Hint" },
+  { value: "openstack", labelKey: "cl.providerOpenstack", hintKey: "cl.providerOpenstackHint" },
+  { value: "vsphere", labelKey: "cl.providerVsphere", hintKey: "cl.providerVsphereHint" },
+  { value: "kubevirt", labelKey: "cl.providerKubevirt", hintKey: "cl.providerKubevirtHint" },
+  { value: "docker", labelKey: "cl.providerDocker", hintKey: "cl.providerDockerHint" },
 ];
 
 function CreateClusterModal({ onClose }: { onClose: () => void }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [form, setForm] = useState<ClusterCreate>({
     name: "",
@@ -133,7 +136,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <Modal title="新建集群" onClose={onClose} width={600}>
+    <Modal title={t("cl.modalTitle")} onClose={onClose} width={600}>
       <form
         className="flex flex-col gap-3.5"
         onSubmit={(e) => {
@@ -143,7 +146,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
         }}
       >
         <div>
-          <label className="label">集群名称</label>
+          <label className="label">{t("cl.clusterName")}</label>
           <input
             className="input"
             required
@@ -154,7 +157,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div>
-          <label className="label">部署目标（Cluster API Infrastructure Provider）</label>
+          <label className="label">{t("cl.deployTarget")}</label>
           <div className="grid grid-cols-2 gap-2">
             {PROVIDERS.map((p) => (
               <button
@@ -167,8 +170,8 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
                     : "border-[var(--color-border-strong)] hover:border-[var(--color-brand-500)]"
                 }`}
               >
-                <div className="text-xs font-semibold">{p.label}</div>
-                <div className="mt-0.5 text-[10px] text-[var(--color-ink-faint)]">{p.hint}</div>
+                <div className="text-xs font-semibold">{t(p.labelKey)}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--color-ink-faint)]">{t(p.hintKey)}</div>
               </button>
             ))}
           </div>
@@ -176,7 +179,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">命名空间</label>
+            <label className="label">{t("cl.namespace")}</label>
             <input
               className="input"
               value={form.namespace}
@@ -184,7 +187,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="label">控制面节点数</label>
+            <label className="label">{t("cl.controlPlaneNodeCount")}</label>
             <input
               className="input"
               type="number"
@@ -193,14 +196,12 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setForm({ ...form, control_plane_count: Number(e.target.value) })}
             />
             {!isCloud && (
-              <p className="mt-1 text-[10px] text-[var(--color-ink-faint)]">
-                Metal3 集群这里只是初始值——实际数量以后面分配的 control-plane 角色硬件数量为准
-              </p>
+              <p className="mt-1 text-[10px] text-[var(--color-ink-faint)]">{t("cl.metal3InitialCountHint")}</p>
             )}
           </div>
         </div>
         <div>
-          <label className="label">控制面 Endpoint（VIP）</label>
+          <label className="label">{t("cl.controlPlaneEndpointVip")}</label>
           <input
             className="input mono"
             placeholder="192.0.2.1"
@@ -213,7 +214,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
           <>
             <div className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
               <div>
-                <label className="label">控制面 Flavor / 规格</label>
+                <label className="label">{t("cl.controlPlaneFlavor")}</label>
                 <input
                   className="input"
                   required
@@ -223,7 +224,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
                 />
               </div>
               <div>
-                <label className="label">控制面 Image / 模板</label>
+                <label className="label">{t("cl.controlPlaneImage")}</label>
                 <input
                   className="input"
                   required
@@ -249,7 +250,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Pod CIDR</label>
+            <label className="label">{t("cl.podCidr")}</label>
             <input
               className="input mono"
               value={(form.spec?.pod_cidr as string) ?? ""}
@@ -257,7 +258,7 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="label">Service CIDR</label>
+            <label className="label">{t("cl.serviceCidr")}</label>
             <input
               className="input mono"
               value={(form.spec?.service_cidr as string) ?? ""}
@@ -270,10 +271,10 @@ function CreateClusterModal({ onClose }: { onClose: () => void }) {
 
         <div className="mt-1 flex justify-end gap-2">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
-            取消
+            {t("cl.cancel")}
           </button>
           <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
-            {createMutation.isPending ? "创建中..." : "创建"}
+            {createMutation.isPending ? t("cl.creating") : t("cl.create")}
           </button>
         </div>
       </form>
@@ -290,6 +291,7 @@ function ProviderConfigFields({
   spec: Record<string, unknown>;
   onChange: (spec: Record<string, unknown>) => void;
 }) {
+  const { t } = useLanguage();
   // Every field the CAPO/CAPV/CAPK templates read off `cluster.<provider>.*`
   // falls back to `default('')` rather than crashing when missing -- which
   // is exactly why this form existed without them for a while and nobody
@@ -305,7 +307,7 @@ function ProviderConfigFields({
     return (
       <div className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
         <div>
-          <label className="label">Cloud 名称（clouds.yaml）</label>
+          <label className="label">{t("cl.cloudName")}</label>
           <input
             className="input"
             required
@@ -315,7 +317,7 @@ function ProviderConfigFields({
           />
         </div>
         <div>
-          <label className="label">外部网络 ID</label>
+          <label className="label">{t("cl.externalNetworkId")}</label>
           <input
             className="input mono"
             placeholder="ext-net-uuid"
@@ -331,7 +333,7 @@ function ProviderConfigFields({
     return (
       <div className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
         <div>
-          <label className="label">vCenter Server</label>
+          <label className="label">{t("cl.vcenterServer")}</label>
           <input
             className="input"
             required
@@ -341,7 +343,7 @@ function ProviderConfigFields({
           />
         </div>
         <div>
-          <label className="label">Datacenter</label>
+          <label className="label">{t("cl.datacenter")}</label>
           <input
             className="input"
             required
@@ -350,7 +352,7 @@ function ProviderConfigFields({
           />
         </div>
         <div>
-          <label className="label">Datastore</label>
+          <label className="label">{t("cl.datastore")}</label>
           <input
             className="input"
             required
@@ -359,7 +361,7 @@ function ProviderConfigFields({
           />
         </div>
         <div>
-          <label className="label">Network</label>
+          <label className="label">{t("cl.network")}</label>
           <input
             className="input"
             required
@@ -374,7 +376,7 @@ function ProviderConfigFields({
   // kubevirt
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
-      <label className="label">StorageClass（给节点的 DataVolume 用）</label>
+      <label className="label">{t("cl.storageClass")}</label>
       <input
         className="input"
         required
@@ -393,25 +395,26 @@ function WorkerPoolEditor({
   pools: NonNullable<ClusterCreate["worker_pools"]>;
   onChange: (pools: NonNullable<ClusterCreate["worker_pools"]>) => void;
 }) {
+  const { t } = useLanguage();
   const addPool = () =>
     onChange([...pools, { name: `pool${pools.length + 1}`, count: 1, flavor: "", image: "" }]);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <label className="label !mb-0">Worker 节点池</label>
+        <label className="label !mb-0">{t("cl.workerPools")}</label>
         <button type="button" className="btn btn-secondary !py-1 !text-[11px]" onClick={addPool}>
-          <Plus size={12} /> 加一个池
+          <Plus size={12} /> {t("cl.addPool")}
         </button>
       </div>
       {pools.length === 0 ? (
-        <p className="text-[11px] text-[var(--color-ink-faint)]">还没有 worker 池（只有控制面也可以，先建集群，以后再加）</p>
+        <p className="text-[11px] text-[var(--color-ink-faint)]">{t("cl.noPoolsHint")}</p>
       ) : (
         pools.map((pool, i) => (
           <div key={i} className="grid grid-cols-[1fr_70px_1fr_1fr_28px] gap-1.5">
             <input
               className="input !text-xs"
-              placeholder="池名"
+              placeholder={t("cl.poolNamePlaceholder")}
               value={pool.name}
               onChange={(e) => {
                 const next = [...pools];
@@ -423,7 +426,7 @@ function WorkerPoolEditor({
               className="input !text-xs"
               type="number"
               min={1}
-              placeholder="数量"
+              placeholder={t("cl.poolCountPlaceholder")}
               value={pool.count}
               onChange={(e) => {
                 const next = [...pools];

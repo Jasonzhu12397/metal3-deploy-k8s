@@ -4,8 +4,10 @@ import { useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { StatusTag } from "../../components/ui/StatusTag";
+import { useLanguage } from "../../lib/i18n";
 
 export default function AIWorkloads() {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
 
@@ -27,30 +29,28 @@ export default function AIWorkloads() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[var(--color-ink-muted)]">
-          把 vLLM 推理服务一键部署到已经建好的目标集群上（不是集群 addon，是跑在集群里的一个工作负载）。目标集群的控制面必须已经 Ready——kubeconfig 还没生成的话部署会失败，可以之后点「重试部署」。
-        </p>
+        <p className="text-xs text-[var(--color-ink-muted)]">{t("ai.hint")}</p>
         <button className="btn btn-primary shrink-0" onClick={() => setShowCreate(true)}>
-          <Plus size={14} /> 部署 vLLM
+          <Plus size={14} /> {t("ai.deployVllm")}
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-[var(--color-ink-faint)]">加载中...</p>
+        <p className="text-xs text-[var(--color-ink-faint)]">{t("ai.loading")}</p>
       ) : !workloads || workloads.length === 0 ? (
         <div className="card">
-          <EmptyState icon={Sparkles} title="还没有部署任何 AI 工作负载" hint="点右上角「部署 vLLM」把推理服务部署到目标集群" />
+          <EmptyState icon={Sparkles} title={t("ai.emptyTitle")} hint={t("ai.emptyHint")} />
         </div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-muted)]">
-                <th className="px-4 py-2.5 font-medium">名称</th>
-                <th className="px-4 py-2.5 font-medium">模型</th>
-                <th className="px-4 py-2.5 font-medium">GPU × 副本</th>
-                <th className="px-4 py-2.5 font-medium">状态</th>
-                <th className="px-4 py-2.5 font-medium">Endpoint</th>
+                <th className="px-4 py-2.5 font-medium">{t("ai.colName")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("ai.colModel")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("ai.colGpuReplicas")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("ai.colStatus")}</th>
+                <th className="px-4 py-2.5 font-medium">{t("ai.colEndpoint")}</th>
                 <th className="px-4 py-2.5 font-medium"></th>
               </tr>
             </thead>
@@ -79,7 +79,7 @@ export default function AIWorkloads() {
                       {w.status === "failed" && (
                         <button
                           className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-ink-faint)] hover:bg-[var(--color-idle-soft)]"
-                          title="重试部署"
+                          title={t("ai.retryDeploy")}
                           onClick={() => redeployMutation.mutate(w.id)}
                           disabled={redeployMutation.isPending}
                         >
@@ -88,7 +88,7 @@ export default function AIWorkloads() {
                       )}
                       <button
                         className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-ink-faint)] hover:bg-[var(--color-danger-soft)] hover:text-[var(--color-danger)]"
-                        title="删除"
+                        title={t("ai.delete")}
                         onClick={() => removeMutation.mutate(w.id)}
                       >
                         <X size={13} />
@@ -108,6 +108,7 @@ export default function AIWorkloads() {
 }
 
 function CreateWorkloadModal({ onClose }: { onClose: () => void }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.clusters.list });
 
@@ -133,13 +134,13 @@ function CreateWorkloadModal({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: ["ai-workloads"] });
       onClose();
     },
-    onError: (e: Error) => setError(e instanceof ApiError ? e.message : "创建失败"),
+    onError: (e: Error) => setError(e instanceof ApiError ? e.message : t("ai.createFailed")),
   });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-xl bg-[var(--color-surface)] p-5 shadow-xl">
-        <h3 className="mb-3 text-sm font-bold">部署 vLLM 推理服务</h3>
+        <h3 className="mb-3 text-sm font-bold">{t("ai.modalTitle")}</h3>
         <form
           className="flex flex-col gap-3"
           onSubmit={(e) => {
@@ -149,15 +150,15 @@ function CreateWorkloadModal({ onClose }: { onClose: () => void }) {
           }}
         >
           <div>
-            <label className="label">名称</label>
+            <label className="label">{t("ai.name")}</label>
             <input className="input" required placeholder="qwen-7b" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
 
           <div>
-            <label className="label">目标集群</label>
+            <label className="label">{t("ai.targetCluster")}</label>
             <select className="input" required value={clusterId} onChange={(e) => setClusterId(e.target.value)}>
               <option value="" disabled>
-                选一个已建好的集群
+                {t("ai.selectCluster")}
               </option>
               {(clusters ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
@@ -165,18 +166,16 @@ function CreateWorkloadModal({ onClose }: { onClose: () => void }) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-[10px] text-[var(--color-ink-faint)]">
-              集群控制面必须已经 Ready（kubeconfig 已生成），否则部署会失败——可以之后重试。
-            </p>
+            <p className="mt-1 text-[10px] text-[var(--color-ink-faint)]">{t("ai.clusterReadyHint")}</p>
           </div>
 
           <div>
-            <label className="label">目标命名空间</label>
+            <label className="label">{t("ai.targetNamespace")}</label>
             <input className="input" value={namespace} onChange={(e) => setNamespace(e.target.value)} />
           </div>
 
           <div>
-            <label className="label">模型（HuggingFace 引用）</label>
+            <label className="label">{t("ai.modelHfRef")}</label>
             <input
               className="input mono"
               required
@@ -188,11 +187,11 @@ function CreateWorkloadModal({ onClose }: { onClose: () => void }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">GPU 数量 / 副本</label>
+              <label className="label">{t("ai.gpuCountPerReplica")}</label>
               <input className="input" type="number" min={1} value={gpuCount} onChange={(e) => setGpuCount(e.target.value)} />
             </div>
             <div>
-              <label className="label">副本数</label>
+              <label className="label">{t("ai.replicaCount")}</label>
               <input className="input" type="number" min={1} value={replicas} onChange={(e) => setReplicas(e.target.value)} />
             </div>
           </div>
@@ -201,10 +200,10 @@ function CreateWorkloadModal({ onClose }: { onClose: () => void }) {
 
           <div className="mt-1 flex justify-end gap-2">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
-              取消
+              {t("ai.cancel")}
             </button>
             <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "部署中..." : "部署"}
+              {createMutation.isPending ? t("ai.deploying") : t("ai.deploy")}
             </button>
           </div>
         </form>

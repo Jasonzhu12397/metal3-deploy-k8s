@@ -5,8 +5,10 @@ import { Modal } from "../../components/ui/Modal";
 import { CoreMap } from "../../components/ui/CoreMap";
 import { isolatedCpuCount } from "../../lib/cpu";
 import type { HardwareAsset } from "../../lib/types";
+import { useLanguage } from "../../lib/i18n";
 
 export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; onClose: () => void }) {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const [poolName, setPoolName] = useState("pool1");
   const [role, setRole] = useState<"worker" | "control-plane">("worker");
@@ -47,14 +49,14 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
-    <Modal title="分配硬件资产到节点池" onClose={onClose} width={640}>
+    <Modal title={t("assign.modalTitle")} onClose={onClose} width={640}>
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
           if (selected.length === 0) {
-            setError("至少选一台机器");
+            setError(t("assign.selectAtLeastOne"));
             return;
           }
           assignMutation.mutate();
@@ -62,11 +64,11 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
       >
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">节点池名称</label>
+            <label className="label">{t("assign.poolName")}</label>
             <input className="input" value={poolName} onChange={(e) => setPoolName(e.target.value)} required />
           </div>
           <div>
-            <label className="label">角色</label>
+            <label className="label">{t("assign.role")}</label>
             <select className="input" value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
               <option value="worker">worker</option>
               <option value="control-plane">control-plane</option>
@@ -75,14 +77,12 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
         </div>
 
         <div>
-          <label className="label">选择空闲硬件（{selected.length} 台已选）</label>
+          <label className="label">{t("assign.selectFreeHardware", { count: selected.length })}</label>
           <div className="max-h-56 overflow-y-auto rounded-lg border border-[var(--color-border)]">
             {isLoading ? (
-              <p className="p-4 text-center text-xs text-[var(--color-ink-faint)]">加载中...</p>
+              <p className="p-4 text-center text-xs text-[var(--color-ink-faint)]">{t("assign.loading")}</p>
             ) : !assets || assets.length === 0 ? (
-              <p className="p-4 text-center text-xs text-[var(--color-ink-faint)]">
-                没有空闲资产 —— 先注册裸金属主机并等 Ironic 探测完成
-              </p>
+              <p className="p-4 text-center text-xs text-[var(--color-ink-faint)]">{t("assign.noFreeAssets")}</p>
             ) : (
               <ul className="divide-y divide-[var(--color-border)]">
                 {assets.map((a) => (
@@ -96,7 +96,7 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
                       <div className="flex-1">
                         <div className="text-sm font-medium">{a.name}</div>
                         <div className="text-[11px] text-[var(--color-ink-faint)]">
-                          {a.model ?? "未知型号"} · {a.cpu_sockets}×{a.cpu_cores_per_socket}核 · {a.memory_gb}GB
+                          {t("assign.assetSummary", { model: a.model ?? t("assign.unknownModel"), sockets: a.cpu_sockets, cores: a.cpu_cores_per_socket, memory: a.memory_gb })}
                         </div>
                       </div>
                     </label>
@@ -109,7 +109,7 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
 
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3.5">
           <div className="mb-2 flex items-center justify-between">
-            <label className="label !mb-0">每 Socket 预留核数（CPU 预留）</label>
+            <label className="label !mb-0">{t("assign.reservedPerSocket")}</label>
             <span className="mono text-sm font-semibold text-[var(--color-brand-600)]">{reservedPerSocket}</span>
           </div>
           <input
@@ -130,7 +130,7 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
                 reservedPerSocket={reservedPerSocket}
               />
               <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">
-                业务可用逻辑核：
+                {t("assign.availableLogicalCores")}
                 <span className="mono font-semibold text-[var(--color-ink)]">
                   {" "}
                   {isolatedCpuCount(
@@ -140,13 +140,11 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
                     reservedPerSocket,
                   )}
                 </span>
-                {"  ·  以 "}
-                <span className="font-medium">{previewAsset.name}</span>
-                {" 的 CPU 拓扑预览（池内所有机器按此规则统一计算）"}
+                {t("assign.previewSuffix", { name: previewAsset.name })}
               </p>
             </div>
           ) : (
-            <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">勾选一台机器即可预览核心分配</p>
+            <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">{t("assign.selectToPreview")}</p>
           )}
         </div>
 
@@ -157,10 +155,10 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
               checked={isolationInterrupts}
               onChange={(e) => setIsolationInterrupts(e.target.checked)}
             />
-            隔离中断（DPDK/CNF 场景建议开启）
+            {t("assign.isolationInterrupts")}
           </label>
           <div>
-            <label className="label">1GB 大页数量</label>
+            <label className="label">{t("assign.hugepage1gCount")}</label>
             <input
               type="number"
               className="input"
@@ -175,10 +173,10 @@ export function AssignAssetsModal({ clusterId, onClose }: { clusterId: string; o
 
         <div className="flex justify-end gap-2">
           <button type="button" className="btn btn-secondary" onClick={onClose}>
-            取消
+            {t("assign.cancel")}
           </button>
           <button type="submit" className="btn btn-primary" disabled={assignMutation.isPending}>
-            {assignMutation.isPending ? "分配中..." : `分配 ${selected.length} 台到 ${poolName}`}
+            {assignMutation.isPending ? t("assign.assigning") : t("assign.assignCountToPool", { count: selected.length, pool: poolName })}
           </button>
         </div>
       </form>
