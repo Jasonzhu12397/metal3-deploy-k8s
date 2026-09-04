@@ -40,6 +40,36 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
 )
 
+_worker_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_worker_loop() -> asyncio.AbstractEventLoop:
+    """Celery's prefork workers reuse the same process -- and therefore
+    the same module-level `engine`/`AsyncSessionLocal` from app.core.db,
+    and every asyncpg connection that engine's pool is holding onto --
+    across every deployment task that process ever runs, for the rest of
+    its life. asyncpg connections are bound to the event loop that
+    created them; `asyncio.run()` tears its loop down the moment the
+    coroutine it wraps returns. Calling `run_deployment_task` a second
+    time in the same worker process used to call `asyncio.run()` again,
+    handing the (still-pooled) connections from the first run's now-closed
+    loop to a brand new one -- asyncpg then raises exactly
+    "Future ... attached to a different loop" the moment anything tries
+    to actually use one of those stale connections. This wasn't a
+    hypothetical: it's what a real second deployment in the same worker
+    process hit in production.
+
+    Keeping one event loop alive for this worker process's entire life
+    -- the same way the FastAPI app naturally has exactly one loop for
+    its whole life under uvicorn -- avoids the mismatch entirely: every
+    pooled connection this process ever opens stays bound to the one
+    loop that's still running when it's reused.
+    """
+    global _worker_loop
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+    return _worker_loop
+
 
 async def _set_phase(deployment_id: str, phase: DeploymentPhase, message: str = "") -> None:
     async with AsyncSessionLocal() as session:
@@ -146,4 +176,5 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
 
 @celery_app.task(name="deployment.run")
 def run_deployment_task(deployment_id: str, cluster_spec: dict, namespace: str) -> None:
-    asyncio.run(_run_deployment(deployment_id, cluster_spec, namespace))
+    loop = _get_worker_loop()
+    loop.run_until_complete(_run_deployment(deployment_id, cluster_spec, namespace))
