@@ -105,3 +105,63 @@ def test_sync_from_ironic_with_wrapped_inventory_body_actually_applies_it():
             # the common case (no body at all) must keep working too
             r2 = client.post(f"/api/v1/hardware-assets/{asset_id}/sync-from-ironic", headers=headers)
             assert r2.status_code == 200
+
+
+def test_cannot_create_hardware_asset_with_zero_threads_per_core():
+    """Found via a bug-scanning pass: nothing previously stopped
+    cpu_threads_per_core=0 from being stored, which would then crash
+    POST /{id}/sync-from-ironic with a bare ZeroDivisionError the next
+    time it ran (see tests/test_introspection.py for the underlying
+    services/introspection.py fix) -- this closes the door at the point
+    a human could actually type the bad value in, not just downstream
+    where it eventually blew up."""
+    asyncio.run(_reset_admin_user())
+    with TestClient(app) as client:
+        headers = _login_headers(client)
+        r = client.post(
+            "/api/v1/hardware-assets",
+            json={"name": "zero-threads-test", "cpu_threads_per_core": 0},
+            headers=headers,
+        )
+        assert r.status_code == 422
+
+
+def test_cannot_create_hardware_asset_with_zero_sockets():
+    asyncio.run(_reset_admin_user())
+    with TestClient(app) as client:
+        headers = _login_headers(client)
+        r = client.post(
+            "/api/v1/hardware-assets",
+            json={"name": "zero-sockets-test", "cpu_sockets": 0},
+            headers=headers,
+        )
+        assert r.status_code == 422
+
+
+def test_cannot_create_hardware_asset_with_negative_cpu_fields():
+    asyncio.run(_reset_admin_user())
+    with TestClient(app) as client:
+        headers = _login_headers(client)
+        r = client.post(
+            "/api/v1/hardware-assets",
+            json={"name": "negative-cpu-test", "cpu_sockets": -2},
+            headers=headers,
+        )
+        assert r.status_code == 422
+
+
+def test_normal_cpu_field_values_still_create_successfully():
+    """The validation added above must not be so strict it rejects the
+    every-day case -- confirms 1 socket (a real, common single-socket
+    machine, not just the default of 2) still works."""
+    asyncio.run(_reset_admin_user())
+    with TestClient(app) as client:
+        headers = _login_headers(client)
+        r = client.post(
+            "/api/v1/hardware-assets",
+            json={"name": "normal-single-socket", "cpu_sockets": 1, "cpu_threads_per_core": 1},
+            headers=headers,
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["cpu_sockets"] == 1
+        assert r.json()["cpu_threads_per_core"] == 1

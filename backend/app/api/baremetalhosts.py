@@ -9,7 +9,6 @@ from app.models.hardware_asset import AssetStatus, HardwareAsset
 from app.schemas.baremetalhost import (
     BareMetalHostBulkImport,
     BareMetalHostCreate,
-    BareMetalHostRead,
 )
 from app.services import crypto
 from app.services.metal3 import Metal3Service

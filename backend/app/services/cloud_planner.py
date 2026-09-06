@@ -33,8 +33,8 @@ class CloudPlannerService:
             "infrastructure_provider": provider,
             "control_plane_count": cluster.control_plane_count,
             "control_plane_endpoint": cluster.control_plane_endpoint,
-            "worker_pools": cluster.worker_pool_config.get("pools", []),
-            **cluster.spec,
+            "worker_pools": (cluster.worker_pool_config or {}).get("pools", []),
+            **(cluster.spec or {}),
             # No physical hosts for a cloud provider -- the deployment task
             # skips APPLYING_BMH/WAITING_FOR_HOSTS entirely when this list
             # is empty (see tasks/deployment_tasks.py).

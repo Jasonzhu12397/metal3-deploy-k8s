@@ -34,9 +34,23 @@ class HardwareAssetCreate(BaseModel):
     vendor: Optional[str] = None
     model: Optional[str] = None
     cpu_model: Optional[str] = None
-    cpu_sockets: int = 2
+    # gt=0: a real machine always has >=1 socket and >=1 thread per
+    # core -- 0 here isn't "unknown yet" (that's what a fresh sync from
+    # Ironic corrects), it's a value that later makes
+    # services/introspection.py divide by zero the next time
+    # sync-from-ironic runs (that division has its own defensive guard
+    # too now, but this is the actual place to stop a nonsensical value
+    # from being stored in the first place). cpu_cores_per_socket is
+    # deliberately left unconstrained: parse_bmh_hardware legitimately
+    # produces 0 there when Ironic hasn't reported a CPU count yet, and
+    # that path writes directly to the ORM, bypassing this schema
+    # entirely -- constraining it here would only stop a human typing 0
+    # by hand, not the real "unknown" case, so it's not worth the
+    # inconsistency of rejecting 0 here while still producing it
+    # internally.
+    cpu_sockets: int = Field(default=2, gt=0)
     cpu_cores_per_socket: int = 32
-    cpu_threads_per_core: int = 2
+    cpu_threads_per_core: int = Field(default=2, gt=0)
     memory_gb: int = 0
     gpu_model: Optional[str] = None
     gpu_count: int = 0

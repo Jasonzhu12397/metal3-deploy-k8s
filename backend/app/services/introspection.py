@@ -21,7 +21,7 @@ asset can be used to render network config.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 def parse_bmh_hardware(status_hardware: dict[str, Any]) -> dict[str, Any]:
@@ -83,7 +83,6 @@ def enrich_with_ironic_inventory(
     'cpu', 'memory', 'interfaces', 'disks' top-level keys with PCI/NUMA
     detail). Overwrites/augments what parse_bmh_hardware produced."""
     cpu = inventory.get("cpu", {}) or {}
-    sockets = cpu.get("count") or base_fields.get("cpu_sockets", 1)
     # ironic-python-agent reports total logical count; socket topology
     # itself typically has to come from `cpu.get("socket_count")` if your
     # IPA build exposes it (not all do) -- fall back gracefully.
@@ -93,7 +92,9 @@ def enrich_with_ironic_inventory(
     )
     total_logical = cpu.get("count") or 0
     cores_per_socket = (
-        (total_logical // (socket_count * threads_per_core)) if total_logical and socket_count else 0
+        (total_logical // (socket_count * threads_per_core))
+        if total_logical and socket_count and threads_per_core
+        else 0
     )
 
     interfaces = []
