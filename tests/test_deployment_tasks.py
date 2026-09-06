@@ -19,6 +19,8 @@ import sys
 import uuid
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
 
@@ -164,3 +166,103 @@ def test_run_deployment_task_reuses_one_event_loop_across_calls():
     dep2 = asyncio.run(_get_deployment(dep_id_2))
     assert dep1.phase == DeploymentPhase.COMPLETE
     assert dep2.phase == DeploymentPhase.COMPLETE
+
+
+def test_pivot_step_is_skipped_by_default():
+    """The opt-in gate itself: cluster_spec without
+    pivot_to_self_hosting must never even attempt a pivot -- a permanent,
+    already-existing management cluster has no reason to hand off
+    management of what it just built, and calling clusterctl move
+    unconditionally would be actively wrong there, not just unnecessary."""
+    _, deployment_id = asyncio.run(_make_cluster_and_deployment("pivot-skip-test"))
+
+    with patch("app.tasks.deployment_tasks.CAPIService.render_manifests", return_value=[]), \
+         patch("app.tasks.deployment_tasks.CAPIService.apply_cluster", return_value=[]), \
+         patch(
+             "app.tasks.deployment_tasks.Metal3Service.get_host_status",
+             return_value={"provisioning": {"state": "available"}},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.CAPIService.get_cluster_status",
+             return_value={"conditions": [{"type": "ControlPlaneReady", "status": "True"}]},
+         ), \
+         patch("app.tasks.deployment_tasks.pivot_management_to_target") as mock_pivot:
+        asyncio.run(_run_deployment(str(deployment_id), MINIMAL_CLUSTER_SPEC, "metal3"))
+
+    mock_pivot.assert_not_called()
+    dep = asyncio.run(_get_deployment(deployment_id))
+    assert dep.phase == DeploymentPhase.COMPLETE
+    assert "pivoting_to_target_cluster" not in dep.log
+
+
+def test_pivot_step_runs_when_opted_in_and_reaches_complete():
+    """The real, previously-missing "step 6" from this module's own
+    docstring: with pivot_to_self_hosting set, the deployment must fetch
+    the target cluster's kubeconfig, call pivot_management_to_target
+    with it, log the pivot phase, and still reach COMPLETE."""
+    _, deployment_id = asyncio.run(_make_cluster_and_deployment("pivot-enabled-test"))
+    spec_with_pivot = {**MINIMAL_CLUSTER_SPEC, "pivot_to_self_hosting": True}
+
+    with patch("app.tasks.deployment_tasks.CAPIService.render_manifests", return_value=[]), \
+         patch("app.tasks.deployment_tasks.CAPIService.apply_cluster", return_value=[]), \
+         patch(
+             "app.tasks.deployment_tasks.Metal3Service.get_host_status",
+             return_value={"provisioning": {"state": "available"}},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.CAPIService.get_cluster_status",
+             return_value={"conditions": [{"type": "ControlPlaneReady", "status": "True"}]},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.fetch_target_cluster_kubeconfig",
+             return_value="apiVersion: v1\nkind: Config",
+         ) as mock_fetch, \
+         patch(
+             "app.tasks.deployment_tasks.pivot_management_to_target",
+             return_value="Moving Cluster metal3/deploy-task-test-cluster\nDone.",
+         ) as mock_pivot:
+        asyncio.run(_run_deployment(str(deployment_id), spec_with_pivot, "metal3"))
+
+    mock_fetch.assert_called_once_with("deploy-task-test-cluster", "metal3")
+    mock_pivot.assert_called_once()
+    call_kwargs = mock_pivot.call_args.kwargs
+    assert call_kwargs["namespace"] == "metal3"
+    assert call_kwargs["target_kubeconfig_yaml"] == "apiVersion: v1\nkind: Config"
+
+    dep = asyncio.run(_get_deployment(deployment_id))
+    assert dep.phase == DeploymentPhase.COMPLETE
+    assert "[pivoting_to_target_cluster]" in dep.log
+    assert "Moving Cluster" in dep.log
+
+
+def test_pivot_failure_fails_the_whole_deployment():
+    """A failed pivot leaves CAPI management split across two clusters
+    in an undefined state -- this must surface as a real deployment
+    failure, not something silently swallowed so the deployment reports
+    COMPLETE while actually being half-migrated."""
+    from app.services.pivot import PivotError
+
+    _, deployment_id = asyncio.run(_make_cluster_and_deployment("pivot-fail-test"))
+    spec_with_pivot = {**MINIMAL_CLUSTER_SPEC, "pivot_to_self_hosting": True}
+
+    with patch("app.tasks.deployment_tasks.CAPIService.render_manifests", return_value=[]), \
+         patch("app.tasks.deployment_tasks.CAPIService.apply_cluster", return_value=[]), \
+         patch(
+             "app.tasks.deployment_tasks.Metal3Service.get_host_status",
+             return_value={"provisioning": {"state": "available"}},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.CAPIService.get_cluster_status",
+             return_value={"conditions": [{"type": "ControlPlaneReady", "status": "True"}]},
+         ), \
+         patch("app.tasks.deployment_tasks.fetch_target_cluster_kubeconfig", return_value="apiVersion: v1\nkind: Config"), \
+         patch(
+             "app.tasks.deployment_tasks.pivot_management_to_target",
+             side_effect=PivotError("clusterctl move failed: connection refused"),
+         ):
+        with pytest.raises(PivotError):
+            asyncio.run(_run_deployment(str(deployment_id), spec_with_pivot, "metal3"))
+
+    dep = asyncio.run(_get_deployment(deployment_id))
+    assert dep.phase == DeploymentPhase.FAILED
+    assert "connection refused" in dep.error_message

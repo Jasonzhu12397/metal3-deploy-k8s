@@ -7,8 +7,11 @@ Celery task(s) that drive a Deployment through its phases:
   3. apply BareMetalHost objects, wait for them to become "available"
   4. apply Cluster / Metal3Cluster / KubeadmControlPlane / MachineDeployment
   5. wait for the control plane to come up, install addons
-  6. (optionally) pivot CAPI management from the ephemeral node to the
-     newly-created target cluster, then decommission the ephemeral node
+  6. (optional, opt-in via cluster_spec["pivot_to_self_hosting"]) pivot
+     CAPI management from the ephemeral node to the newly-created target
+     cluster via services/pivot.py -- decommissioning the ephemeral node
+     itself is left as a site-specific extension point (see that
+     module's docstring for why)
 
 Each step publishes progress via ConnectionManager so the API layer's
 WebSocket route can relay it to clients. Long-running waits are simple
@@ -29,6 +32,8 @@ from app.core.db import AsyncSessionLocal
 from app.models.deployment import Deployment, DeploymentPhase
 from app.services.capi import CAPIService
 from app.services.metal3 import Metal3Service
+from app.services.pivot import pivot_management_to_target
+from app.services.target_cluster import fetch_target_cluster_kubeconfig
 from app.websocket.manager import manager
 
 logger = logging.getLogger(__name__)
@@ -159,6 +164,38 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
         # Addon install (calico, ceph, bgp-lb, apigateway, pm, dex, ...) is
         # deliberately left as an extension point -- wire in Helm/kubectl
         # apply calls here driven by cluster_spec["addons"].
+
+        if cluster_spec.get("pivot_to_self_hosting"):
+            await _set_phase(
+                deployment_id, DeploymentPhase.PIVOTING_TO_TARGET_CLUSTER,
+                "moving CAPI management from the ephemeral node to the new cluster itself",
+            )
+            # Only meaningful for the "ephemeral bootstrap node" pattern:
+            # ephemeral_kubeconfig_path is that temporary management
+            # cluster's own kubeconfig (MGMT_KUBECONFIG_PATH), not the
+            # cluster this deployment just created. A permanent, already-
+            # existing management cluster has no reason to pivot away
+            # from managing what it just built, which is why this whole
+            # block is opt-in (cluster_spec["pivot_to_self_hosting"]),
+            # not automatic.
+            target_kubeconfig_yaml = fetch_target_cluster_kubeconfig(cluster_name, namespace)
+            pivot_log = pivot_management_to_target(
+                source_kubeconfig_path=settings.MGMT_KUBECONFIG_PATH,
+                target_kubeconfig_yaml=target_kubeconfig_yaml,
+                namespace=namespace,
+                timeout_seconds=settings.PIVOT_TIMEOUT,
+            )
+            await _set_phase(deployment_id, DeploymentPhase.PIVOTING_TO_TARGET_CLUSTER, pivot_log)
+            # Decommissioning the ephemeral node itself (powering it off,
+            # releasing it back to inventory, tearing down whatever
+            # temporary compute it was -- a BareMetalHost being reused,
+            # a VM, a container) is deliberately NOT done here: what an
+            # "ephemeral node" concretely IS varies per deployment (see
+            # deploy/bootstrap-management-cluster/README.md), and guessing
+            # wrong risks tearing down something still in use. Left as an
+            # extension point for a site-specific hook once pivoting is
+            # confirmed successful, the same way addon installation above
+            # is.
 
         await _set_phase(deployment_id, DeploymentPhase.COMPLETE, "deployment complete")
 

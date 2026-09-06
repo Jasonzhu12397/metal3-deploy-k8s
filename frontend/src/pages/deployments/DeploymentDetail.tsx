@@ -18,6 +18,15 @@ const PHASE_ORDER: DeploymentPhase[] = [
   "installing_addons",
   "complete",
 ];
+// Deliberately NOT in PHASE_ORDER above: "pivoting_to_target_cluster" is
+// opt-in (cluster_spec["pivot_to_self_hosting"]) and most deployments
+// never go through it -- always rendering it in the fixed stepper would
+// show every non-pivoting deployment a step that will never actually
+// run, permanently stuck looking "pending". It still needs an entry in
+// PHASE_LABEL_KEYS below (TypeScript's Record<DeploymentPhase, ...>
+// requires every enum value), so the phase renders correctly wherever
+// it DOES appear (the event log, a failed-here state) for the
+// deployments that do use it.
 
 const PHASE_LABEL_KEYS: Record<DeploymentPhase, `dep.phase.${DeploymentPhase}`> = {
   queued: "dep.phase.queued",
@@ -28,6 +37,7 @@ const PHASE_LABEL_KEYS: Record<DeploymentPhase, `dep.phase.${DeploymentPhase}`> 
   applying_cluster: "dep.phase.applying_cluster",
   waiting_for_control_plane: "dep.phase.waiting_for_control_plane",
   installing_addons: "dep.phase.installing_addons",
+  pivoting_to_target_cluster: "dep.phase.pivoting_to_target_cluster",
   complete: "dep.phase.complete",
   failed: "dep.phase.failed",
 };

@@ -16,6 +16,7 @@ class DeploymentPhase(str, enum.Enum):
     APPLYING_CLUSTER = "applying_cluster"
     WAITING_FOR_CONTROL_PLANE = "waiting_for_control_plane"
     INSTALLING_ADDONS = "installing_addons"
+    PIVOTING_TO_TARGET_CLUSTER = "pivoting_to_target_cluster"
     COMPLETE = "complete"
     FAILED = "failed"
 

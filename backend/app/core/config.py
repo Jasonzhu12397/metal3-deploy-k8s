@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     # How long to wait for a BMH to reach "available" before failing (s).
     BMH_READY_TIMEOUT: int = 1800
     CLUSTER_PROVISION_TIMEOUT: int = 7200
+    # Path to the `clusterctl` binary, used only for the (optional) pivot
+    # step -- moving CAPI management from an ephemeral bootstrap node to
+    # a newly-self-hosting target cluster (see services/pivot.py for why
+    # this shells out to the real binary rather than reimplementing the
+    # move). Not needed at all if you never enable pivoting.
+    CLUSTERCTL_BINARY_PATH: str = "clusterctl"
+    PIVOT_TIMEOUT: int = 300
 
     # --- Templates ---
     TEMPLATES_DIR: str = "../templates"

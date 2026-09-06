@@ -6,6 +6,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
+# clusterctl -- only actually used by the worker for the (opt-in) pivot
+# step (services/pivot.py moving CAPI management from an ephemeral
+# bootstrap node to a self-hosting target cluster), but baked into this
+# shared image rather than split into an api/worker-specific Dockerfile
+# for simplicity; harmless for the api service, which never calls it.
+ARG CLUSTERCTL_VERSION=v1.14.0
+RUN curl -sL "https://github.com/kubernetes-sigs/cluster-api/releases/download/${CLUSTERCTL_VERSION}/clusterctl-linux-amd64" \
+    -o /usr/local/bin/clusterctl \
+    && chmod +x /usr/local/bin/clusterctl
+
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

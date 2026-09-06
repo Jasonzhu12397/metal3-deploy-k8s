@@ -20,11 +20,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 CAPI_GROUP = "cluster.x-k8s.io"
-CAPI_VERSION = "v1beta1"
-INFRA_GROUP = "infrastructure.cluster.x-k8s.io"
-INFRA_VERSION = "v1beta1"
-CP_GROUP = "controlplane.cluster.x-k8s.io"
-CP_VERSION = "v1beta1"
+CAPI_VERSION = "v1beta2"
 
 
 class CAPIService:

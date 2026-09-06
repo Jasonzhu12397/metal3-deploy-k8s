@@ -147,7 +147,7 @@ export interface ClusterManifestBundle {
 export type DeploymentPhase =
   | "queued" | "generating_manifests" | "bootstrapping_ephemeral_node" | "applying_bmh"
   | "waiting_for_hosts" | "applying_cluster" | "waiting_for_control_plane"
-  | "installing_addons" | "complete" | "failed";
+  | "installing_addons" | "pivoting_to_target_cluster" | "complete" | "failed";
 
 export interface Deployment {
   id: string;
