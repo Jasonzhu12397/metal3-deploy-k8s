@@ -29,3 +29,4 @@ frontend/.env
 
 # vm-bmc testing artifacts (local, environment-specific)
 deploy/testing/vm-bmc/test_nodes.json
+deploy/bootstrap-management-cluster/.bootstrap-work/

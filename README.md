@@ -109,7 +109,7 @@ frontend/           React + Vite + TypeScript console (see "Frontend" below)
 ### Deployment flow (`POST /api/v1/deployments`)
 
 1. `generating_manifests` – validate/render Cluster API manifests from the cluster spec
-2. `bootstrapping_ephemeral_node` – assumes the ephemeral PXE node's single-node management cluster (Metal3 + CAPI) is already reachable via `MGMT_KUBECONFIG_PATH` (that bootstrap itself is site-specific out-of-band-boot + kubeadm territory and out of scope for this service today)
+2. `bootstrapping_ephemeral_node` – assumes the ephemeral PXE node's single-node management cluster (Metal3 + CAPI) is already reachable via `MGMT_KUBECONFIG_PATH`. Getting a bare Kubernetes cluster to that "Metal3 + CAPI installed" state is now automatable via `deploy/bootstrap-management-cluster/` (see below) -- what's still genuinely out of scope, because no script can safely guess it, is your actual provisioning network's DHCP/PXE configuration.
 3. `applying_bmh` / `waiting_for_hosts` – confirms registered `BareMetalHost` objects reach `available`
 4. `applying_cluster` – applies `Cluster` / `Metal3Cluster` / `KubeadmControlPlane` / `Metal3MachineTemplate` / `MachineDeployment`
 5. `waiting_for_control_plane` – polls the CAPI `Cluster` status for `ControlPlaneReady`

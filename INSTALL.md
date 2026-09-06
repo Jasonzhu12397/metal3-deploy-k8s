@@ -278,6 +278,22 @@ docker compose down -v   # -v 会连数据卷一起删，postgres 数据也没�
 
 ---
 
+## 8.4 还没有管理集群（Ironic + Metal3 + CAPI 还没装）怎么办
+
+这个平台本身假设"管理集群"（跑 Ironic/baremetal-operator/CAPI/CAPM3 的那个集群）已经
+存在——这条边界一直写在文档里。如果你还没有这个前提，`deploy/bootstrap-management-cluster/`
+可以帮你自动装出这一层，用的是 Metal3 官方当前真实有效的 quick-start 流程（不是简化版）：
+
+```bash
+cd deploy/bootstrap-management-cluster
+./setup.sh
+```
+
+装完之后把打印出来的 kubeconfig 设成 `MGMT_KUBECONFIG_PATH`，就能衔接上这个项目本身的部署
+流程了。**跑完脚本之后，你还必须自己去配置真实的 DHCP/PXE 网络参数**——这个脚本故意不帮你
+猜，猜错了可能把不相关的网段搞挂。详细步骤、以及这次开发时实际验证过什么/没验证过什么，
+见 `deploy/bootstrap-management-cluster/README.md`。
+
 ## 8.5 没有真实物理机，想测试完整流程怎么办
 
 三条路：
