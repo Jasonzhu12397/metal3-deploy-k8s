@@ -16,6 +16,26 @@ RUN curl -sL "https://github.com/kubernetes-sigs/cluster-api/releases/download/$
     -o /usr/local/bin/clusterctl \
     && chmod +x /usr/local/bin/clusterctl
 
+# kubectl + helm -- used by the worker for services/addons.py's addon
+# installer (kubectl apply for manifest-style addons like KubeVirt, helm
+# upgrade --install for chart-style addons like Kube-OVN). Real,
+# official install methods (dl.k8s.io / get.helm.sh, the same sources
+# their own docs point at) -- NOT verified as actually downloading
+# successfully in the sandbox this project was developed in, unlike
+# clusterctl/kind/k3s above: both dl.k8s.io and get.helm.sh were outside
+# that sandbox's network allowlist, a constraint specific to that
+# environment, not a statement about whether these URLs are correct.
+ARG KUBECTL_VERSION=v1.31.4
+RUN curl -sL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl
+ARG HELM_VERSION=v3.21.4
+RUN curl -sL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+    | tar -xz -C /tmp \
+    && mv /tmp/linux-amd64/helm /usr/local/bin/helm \
+    && chmod +x /usr/local/bin/helm \
+    && rm -rf /tmp/linux-amd64
+
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

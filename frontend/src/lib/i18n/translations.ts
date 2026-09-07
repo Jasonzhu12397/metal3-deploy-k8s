@@ -339,6 +339,45 @@ export const translations = {
     "hwd.newPasswordPlaceholder": "输入新密码以更新",
     "hwd.bmcSaveHint": "提交后立刻加密存库并重写 Kubernetes Secret；密码本身不会再被任何接口返回。",
 
+    // Status badges (StatusTag) -- one flat namespace covering every
+    // distinct status word across every domain (cluster/BMH/hardware
+    // asset/deployment/AI workload), since several words are genuinely
+    // shared with the same meaning (e.g. "failed", "available"). Kept
+    // separate from hw.status.* (filter *buttons*, which include
+    // non-status entries like "全部") and dep.phase.* (the deployment
+    // stage *stepper*, which has its own longer-form phrasing) even
+    // though a few values overlap in meaning -- this one is specifically
+    // for the compact badge context every other component fell back to
+    // an untranslated raw string for.
+    "status.ready": "已就绪",
+    "status.bootstrapping": "初始化中",
+    "status.provisioning": "配置中",
+    "status.pending": "待处理",
+    "status.failed": "失败",
+    "status.deleting": "删除中",
+    "status.available": "空闲",
+    "status.inspecting": "探测中",
+    "status.registering": "注册中",
+    "status.provisioned": "已配置",
+    "status.deprovisioning": "回收中",
+    "status.error": "错误",
+    "status.unknown": "未知",
+    "status.discovered": "待校验",
+    "status.reserved": "已分配",
+    "status.decommissioned": "已下线",
+    "status.queued": "已排队",
+    "status.generating_manifests": "渲染清单中",
+    "status.bootstrapping_ephemeral_node": "确认管理集群",
+    "status.applying_bmh": "确认主机",
+    "status.waiting_for_hosts": "等待主机就绪",
+    "status.applying_cluster": "apply 集群资源",
+    "status.waiting_for_control_plane": "等待控制面就绪",
+    "status.installing_addons": "安装组件中",
+    "status.pivoting_to_target_cluster": "迁移管理权中",
+    "status.complete": "完成",
+    "status.deploying": "部署中",
+    "status.running": "运行中",
+
     // App Store
     "catalog.title": "应用商店",
     "catalog.subtitle": "这套平台常用的组件目录，对应集群配置里的 addons 段。选一个集群可以直接在这里启用/停用。",
@@ -733,6 +772,36 @@ export const translations = {
     "hwd.password": "Password",
     "hwd.newPasswordPlaceholder": "Enter a new password to update",
     "hwd.bmcSaveHint": "Encrypted at rest and the Kubernetes Secret rewritten immediately on submit -- the password itself is never returned by any endpoint again.",
+
+    // Status badges (StatusTag)
+    "status.ready": "Ready",
+    "status.bootstrapping": "Bootstrapping",
+    "status.provisioning": "Provisioning",
+    "status.pending": "Pending",
+    "status.failed": "Failed",
+    "status.deleting": "Deleting",
+    "status.available": "Available",
+    "status.inspecting": "Inspecting",
+    "status.registering": "Registering",
+    "status.provisioned": "Provisioned",
+    "status.deprovisioning": "Deprovisioning",
+    "status.error": "Error",
+    "status.unknown": "Unknown",
+    "status.discovered": "Pending verification",
+    "status.reserved": "Reserved",
+    "status.decommissioned": "Decommissioned",
+    "status.queued": "Queued",
+    "status.generating_manifests": "Generating manifests",
+    "status.bootstrapping_ephemeral_node": "Confirming management cluster",
+    "status.applying_bmh": "Confirming hosts",
+    "status.waiting_for_hosts": "Waiting for hosts",
+    "status.applying_cluster": "Applying cluster resources",
+    "status.waiting_for_control_plane": "Waiting for control plane",
+    "status.installing_addons": "Installing addons",
+    "status.pivoting_to_target_cluster": "Pivoting management",
+    "status.complete": "Complete",
+    "status.deploying": "Deploying",
+    "status.running": "Running",
 
     // App Store
     "catalog.title": "App Store",

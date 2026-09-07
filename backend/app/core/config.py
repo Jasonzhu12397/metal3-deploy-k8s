@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     # move). Not needed at all if you never enable pivoting.
     CLUSTERCTL_BINARY_PATH: str = "clusterctl"
     PIVOT_TIMEOUT: int = 300
+    # Only relevant for addons wired up in services/addons.py's
+    # INSTALL_METHODS (kubectl apply / helm install against the target
+    # cluster during the installing_addons deployment phase). The worker
+    # image already bundles both at /usr/local/bin, so these rarely need
+    # overriding.
+    KUBECTL_BINARY_PATH: str = "kubectl"
+    HELM_BINARY_PATH: str = "helm"
+    ADDON_INSTALL_TIMEOUT: int = 600
 
     # --- Templates ---
     TEMPLATES_DIR: str = "../templates"

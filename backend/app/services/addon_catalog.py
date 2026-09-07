@@ -5,11 +5,19 @@ storage/observability/platform addon set a typical telco-grade bare-metal
 Kubernetes deployment needs; add new entries here as new addons are
 supported.
 
-Actually installing an addon (Helm/kubectl apply) is still the extension
-point noted in `tasks/deployment_tasks.py` (`installing_addons` phase) --
-this catalog + the enable/disable endpoints just track *intent* (which
-addons should be on for a given cluster) so the UI has something real to
-drive and the deployment task has something real to read.
+Enabling an addon here (via the enable/disable endpoints) only records
+*intent* -- which addons should be on for a given cluster, stored on
+Cluster.spec["addons"], read by the UI to render checked/install-able
+cards. Actually installing it (kubectl apply / helm install against the
+target cluster, during the deployment pipeline's installing_addons
+phase) is a SEPARATE step handled by services/addons.py -- and, as of
+this writing, that module only has real, verified install methods wired
+up for two of the entries below: kubevirt and kube-ovn. Enabling any
+OTHER addon here still records the intent correctly, but the next
+deployment's installing_addons phase will fail with a clear
+"no install method wired up yet" error for it rather than silently
+installing nothing -- see services/addons.py's own docstring for why
+guessing at the rest wasn't done.
 """
 from __future__ import annotations
 

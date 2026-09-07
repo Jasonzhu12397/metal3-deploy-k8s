@@ -266,3 +266,101 @@ def test_pivot_failure_fails_the_whole_deployment():
     dep = asyncio.run(_get_deployment(deployment_id))
     assert dep.phase == DeploymentPhase.FAILED
     assert "connection refused" in dep.error_message
+
+
+def test_no_addons_requested_skips_addon_install_entirely():
+    """No cluster_spec['addons'] at all -- must not even try to fetch a
+    target kubeconfig, since there'd be nothing to install anyway."""
+    _, deployment_id = asyncio.run(_make_cluster_and_deployment("no-addons-test"))
+
+    with patch("app.tasks.deployment_tasks.CAPIService.render_manifests", return_value=[]), \
+         patch("app.tasks.deployment_tasks.CAPIService.apply_cluster", return_value=[]), \
+         patch(
+             "app.tasks.deployment_tasks.Metal3Service.get_host_status",
+             return_value={"provisioning": {"state": "available"}},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.CAPIService.get_cluster_status",
+             return_value={"conditions": [{"type": "ControlPlaneReady", "status": "True"}]},
+         ), \
+         patch("app.tasks.deployment_tasks.fetch_target_cluster_kubeconfig") as mock_fetch, \
+         patch("app.tasks.deployment_tasks.install_addon") as mock_install:
+        asyncio.run(_run_deployment(str(deployment_id), MINIMAL_CLUSTER_SPEC, "metal3"))
+
+    mock_fetch.assert_not_called()
+    mock_install.assert_not_called()
+    dep = asyncio.run(_get_deployment(deployment_id))
+    assert dep.phase == DeploymentPhase.COMPLETE
+
+
+def test_requested_addons_get_installed_against_the_target_cluster():
+    """The real, previously-stubbed behavior: cluster_spec['addons']
+    actually gets installed now, not just recorded as intent."""
+    _, deployment_id = asyncio.run(_make_cluster_and_deployment("addons-install-test"))
+    spec_with_addons = {**MINIMAL_CLUSTER_SPEC, "addons": ["kubevirt", "kube-ovn"]}
+
+    with patch("app.tasks.deployment_tasks.CAPIService.render_manifests", return_value=[]), \
+         patch("app.tasks.deployment_tasks.CAPIService.apply_cluster", return_value=[]), \
+         patch(
+             "app.tasks.deployment_tasks.Metal3Service.get_host_status",
+             return_value={"provisioning": {"state": "available"}},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.CAPIService.get_cluster_status",
+             return_value={"conditions": [{"type": "ControlPlaneReady", "status": "True"}]},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.fetch_target_cluster_kubeconfig",
+             return_value="apiVersion: v1\nkind: Config",
+         ) as mock_fetch, \
+         patch("app.tasks.deployment_tasks.install_addon", return_value="installed ok") as mock_install:
+        asyncio.run(_run_deployment(str(deployment_id), spec_with_addons, "metal3"))
+
+    mock_fetch.assert_called_once_with("deploy-task-test-cluster", "metal3")
+    assert mock_install.call_count == 2
+    installed_names = [call.args[0] for call in mock_install.call_args_list]
+    assert installed_names == ["kubevirt", "kube-ovn"]
+
+    dep = asyncio.run(_get_deployment(deployment_id))
+    assert dep.phase == DeploymentPhase.COMPLETE
+    assert "[kubevirt] installed" in dep.log
+    assert "[kube-ovn] installed" in dep.log
+
+
+def test_one_failed_addon_does_not_block_the_others_but_still_fails_the_deployment():
+    """Independent addons -- kube-ovn failing shouldn't stop kubevirt
+    from being attempted -- but the overall deployment must still
+    surface as FAILED, not a quiet COMPLETE that hides a broken addon."""
+    from app.services.addons import AddonInstallError
+
+    _, deployment_id = asyncio.run(_make_cluster_and_deployment("addon-partial-fail-test"))
+    spec_with_addons = {**MINIMAL_CLUSTER_SPEC, "addons": ["kubevirt", "kube-ovn"]}
+
+    def fake_install(name, **kwargs):
+        if name == "kubevirt":
+            raise AddonInstallError("kubevirt: connection refused")
+        return f"{name} installed ok"
+
+    with patch("app.tasks.deployment_tasks.CAPIService.render_manifests", return_value=[]), \
+         patch("app.tasks.deployment_tasks.CAPIService.apply_cluster", return_value=[]), \
+         patch(
+             "app.tasks.deployment_tasks.Metal3Service.get_host_status",
+             return_value={"provisioning": {"state": "available"}},
+         ), \
+         patch(
+             "app.tasks.deployment_tasks.CAPIService.get_cluster_status",
+             return_value={"conditions": [{"type": "ControlPlaneReady", "status": "True"}]},
+         ), \
+         patch("app.tasks.deployment_tasks.fetch_target_cluster_kubeconfig", return_value="apiVersion: v1\nkind: Config"), \
+         patch("app.tasks.deployment_tasks.install_addon", side_effect=fake_install) as mock_install:
+        with pytest.raises(AddonInstallError):
+            asyncio.run(_run_deployment(str(deployment_id), spec_with_addons, "metal3"))
+
+    # both addons were attempted despite the first one failing
+    assert mock_install.call_count == 2
+
+    dep = asyncio.run(_get_deployment(deployment_id))
+    assert dep.phase == DeploymentPhase.FAILED
+    assert "[kubevirt] FAILED" in dep.log
+    assert "[kube-ovn] installed" in dep.log
+    assert "kubevirt" in dep.error_message

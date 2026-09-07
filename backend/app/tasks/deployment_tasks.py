@@ -22,14 +22,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import tempfile
 import time
 import uuid
+from pathlib import Path
 
 from celery import Celery
 
 from app.core.config import get_settings
 from app.core.db import AsyncSessionLocal
 from app.models.deployment import Deployment, DeploymentPhase
+from app.services.addons import AddonInstallError, install_addon
 from app.services.capi import CAPIService
 from app.services.metal3 import Metal3Service
 from app.services.pivot import pivot_management_to_target
@@ -161,9 +164,45 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
             raise TimeoutError("Control plane did not become ready in time")
 
         await _set_phase(deployment_id, DeploymentPhase.INSTALLING_ADDONS, "installing addon charts")
-        # Addon install (calico, ceph, bgp-lb, apigateway, pm, dex, ...) is
-        # deliberately left as an extension point -- wire in Helm/kubectl
-        # apply calls here driven by cluster_spec["addons"].
+        requested_addons = cluster_spec.get("addons", [])
+        addon_failures: list[str] = []
+        if requested_addons:
+            # Needs the target cluster's own kubeconfig, same convention
+            # services/pivot.py and AI workload deployment already use --
+            # by this point in the pipeline the control plane is up
+            # (confirmed just above), so CAPI has already created the
+            # "<cluster-name>-kubeconfig" Secret this reads.
+            target_kubeconfig_yaml = fetch_target_cluster_kubeconfig(cluster_name, namespace)
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as kf:
+                kf.write(target_kubeconfig_yaml)
+                target_kubeconfig_path = kf.name
+            try:
+                for addon_name in requested_addons:
+                    try:
+                        output = install_addon(
+                            addon_name,
+                            kubeconfig_path=target_kubeconfig_path,
+                            timeout_seconds=settings.ADDON_INSTALL_TIMEOUT,
+                        )
+                        await _set_phase(
+                            deployment_id, DeploymentPhase.INSTALLING_ADDONS, f"[{addon_name}] installed\n{output}"
+                        )
+                    except AddonInstallError as exc:
+                        # One broken addon shouldn't block the others --
+                        # each is independent -- but must not be silently
+                        # swallowed either: logged now, and surfaced as an
+                        # overall deployment failure below once every
+                        # addon has been attempted, so a partially-broken
+                        # addon set is never reported as a quiet success.
+                        addon_failures.append(addon_name)
+                        await _set_phase(
+                            deployment_id, DeploymentPhase.INSTALLING_ADDONS, f"[{addon_name}] FAILED\n{exc}"
+                        )
+            finally:
+                Path(target_kubeconfig_path).unlink(missing_ok=True)
+
+        if addon_failures:
+            raise AddonInstallError(f"addon(s) failed to install: {', '.join(addon_failures)}")
 
         if cluster_spec.get("pivot_to_self_hosting"):
             await _set_phase(
