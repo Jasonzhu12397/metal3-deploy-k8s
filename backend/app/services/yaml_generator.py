@@ -80,7 +80,21 @@ class YamlGeneratorService:
     # ---- k8s-config.yaml -------------------------------------------
     def render_cluster_config(self, cluster_spec: dict[str, Any]) -> str:
         provider = cluster_spec.get("infrastructure_provider", "metal3")
-        template_path = PROVIDER_TEMPLATES.get(provider)
+        # Talos isn't a separate infrastructure_provider -- it's the same
+        # physical hardware (real BareMetalHost picking, real Ironic
+        # provisioning) as standard metal3, just with a different OS/
+        # control-plane stack on top (TalosControlPlane/TalosConfigTemplate
+        # instead of KubeadmControlPlane/KubeadmConfigTemplate, since Talos
+        # doesn't support kubeadm-style bootstrapping at all -- see that
+        # template's own header comment). Modeling it as a flavor of
+        # metal3 rather than a new top-level provider keeps it on the
+        # same AssetPlannerService (hardware-picking) code path metal3
+        # already uses, rather than requiring api/deployments.py's
+        # metal3-vs-cloud-provider dispatch to grow a special case.
+        if provider == "metal3" and cluster_spec.get("os_flavor") == "talos":
+            template_path = "capi/providers/talos-metal3.yaml.j2"
+        else:
+            template_path = PROVIDER_TEMPLATES.get(provider)
         if template_path is None:
             raise ValueError(
                 f"unknown infrastructure_provider '{provider}' -- expected one of "

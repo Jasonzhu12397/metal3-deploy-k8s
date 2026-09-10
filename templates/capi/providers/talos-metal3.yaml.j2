@@ -1,0 +1,168 @@
+{# Metal3 + Talos Linux target-cluster manifests -- an alternative to
+   templates/capi/cluster-template.yaml.j2 for when the target OS should
+   be Talos (immutable, ~few-hundred-MB, API-driven, no SSH) instead of a
+   traditional Linux distro bootstrapped via kubeadm.
+
+   This is NOT "swap the image URL" on the standard metal3 template --
+   Talos does not support kubeadm-style bootstrapping at all. It needs
+   its own, separate Cluster API provider pair from Sidero Labs:
+     - Cluster API Bootstrap Provider Talos (CABPT) -- TalosConfigTemplate
+     - Cluster API Control Plane Provider Talos (CACPPT) -- TalosControlPlane
+   installed via:
+     clusterctl init --bootstrap talos --control-plane talos
+   (in addition to --infrastructure metal3, already covered by
+   deploy/bootstrap-management-cluster/ -- that script does not install
+   the Talos providers, since most deployments of this project won't use
+   them; add the two lines above to its clusterctl init call if you do.)
+
+   Metal3Cluster/Metal3MachineTemplate stay EXACTLY the same as the
+   standard metal3 template -- Ironic doesn't care what OS is in the
+   disk image it writes, only TalosControlPlane/TalosConfigTemplate
+   (replacing KubeadmControlPlane/KubeadmConfigTemplate) and the image
+   itself (a real Talos disk image, not a generic Linux one) differ.
+
+   Talos's own CAPI providers are architecturally a generation behind
+   core CAPI/CAPM3: TalosControlPlane and TalosConfigTemplate are only
+   served at v1alpha3 (confirmed against the real, current CABPT v0.6.5 /
+   CACPPT v0.5.7 release CRDs -- there is no v1beta1/v1beta2 for these
+   two types to move to, unlike this project's other templates), and
+   their own object references use the older {apiVersion, kind, name}
+   ObjectReference shape rather than the {apiGroup, kind, name} shape
+   v1beta2 Cluster/Metal3Cluster use elsewhere in this file. Both facts
+   are accurate as of the CRDs this template was actually checked
+   against, not an oversight -- do not "fix" this to match the rest of
+   this project's v1beta2 migration; there's nothing to migrate to yet. #}
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [{{ cluster.pod_cidr | default('192.168.0.0/16') }}]
+    services:
+      cidrBlocks: [{{ cluster.service_cidr | default('10.96.0.0/12') }}]
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: TalosControlPlane
+    name: {{ cluster.name }}-control-plane
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: Metal3Cluster
+    name: {{ cluster.name }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: Metal3Cluster
+metadata:
+  name: {{ cluster.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  controlPlaneEndpoint:
+    host: {{ cluster.control_plane_endpoint }}
+    port: {{ cluster.control_plane_port | default(6443) }}
+  cloudProviderEnabled: false
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: Metal3MachineTemplate
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      image:
+        # A real Talos "metal" disk image (raw, not an ISO -- Ironic
+        # writes it directly to the target disk the same way it would
+        # any other qcow2/raw OS image). Version pinned to a real,
+        # current Talos release rather than "latest" for reproducibility
+        # -- see https://github.com/siderolabs/talos/releases for newer
+        # ones as they ship.
+        url: {{ cluster.image_url | default('https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz') }}
+        checksum: "{{ cluster.image_checksum | default('') }}"
+{% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
+        checksumType: {{ cluster.image_checksum_type }}
+{% endif %}
+        diskFormat: {{ cluster.image_format | default('raw') }}
+      dataTemplate:
+        name: {{ cluster.name }}-controlplane-template
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+kind: TalosControlPlane
+metadata:
+  name: {{ cluster.name }}-control-plane
+  namespace: {{ cluster.namespace }}
+spec:
+  version: {{ cluster.k8s_version | default('v1.29.0') }}
+  replicas: {{ cluster.control_plane_count | default(3) }}
+  infrastructureTemplate:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    kind: Metal3MachineTemplate
+    name: {{ cluster.name }}-control-plane
+  controlPlaneConfig:
+    controlplane:
+      generateType: controlplane
+      talosVersion: {{ cluster.talos_version | default('v1.12') }}
+{% if cluster.talos_config_patches is defined and cluster.talos_config_patches %}
+      configPatches:
+{% for patch in cluster.talos_config_patches %}
+        - op: {{ patch.op }}
+          path: {{ patch.path }}
+          value: {{ patch.value | tojson }}
+{% endfor %}
+{% endif %}
+{% for pool in cluster.worker_pools %}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: Metal3MachineTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      image:
+        url: {{ cluster.image_url | default('https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz') }}
+        checksum: "{{ cluster.image_checksum | default('') }}"
+{% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
+        checksumType: {{ cluster.image_checksum_type }}
+{% endif %}
+        diskFormat: {{ cluster.image_format | default('raw') }}
+      dataTemplate:
+        name: {{ cluster.name }}-{{ pool.name }}-template
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: TalosConfigTemplate
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  template:
+    spec:
+      generateType: worker
+      talosVersion: {{ cluster.talos_version | default('v1.12') }}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: {{ cluster.name }}-{{ pool.name }}
+  namespace: {{ cluster.namespace }}
+spec:
+  clusterName: {{ cluster.name }}
+  replicas: {{ pool.count }}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: {{ cluster.name }}
+      version: {{ cluster.k8s_version | default('v1.29.0') }}
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: TalosConfigTemplate
+          name: {{ cluster.name }}-{{ pool.name }}
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: Metal3MachineTemplate
+        name: {{ cluster.name }}-{{ pool.name }}
+{% endfor %}

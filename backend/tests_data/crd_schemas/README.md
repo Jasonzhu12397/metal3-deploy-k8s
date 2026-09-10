@@ -81,3 +81,17 @@ CAPV's `config/default/crd/bases/` vs. the more common
 if a URL 404s, check the repo's current directory structure and Makefile
 (`grep -i crd Makefile` usually reveals the real path) rather than
 assuming the file was removed.
+
+## Talos Linux provider CRDs (added later)
+
+| File | Fetched from |
+|---|---|
+| `talos-bootstrap.yaml` | `siderolabs/cluster-api-bootstrap-provider-talos` @ `v0.6.5`, `bootstrap-components.yaml` release asset |
+| `talos-controlplane.yaml` | `siderolabs/cluster-api-control-plane-provider-talos` @ `v0.5.7`, `control-plane-components.yaml` release asset |
+
+Unlike every other CRD in this directory, these are only served at
+`v1alpha3` -- confirmed against the real files, not an oversight. Talos's
+own CAPI provider pair hasn't moved to v1beta1/v1beta2 the way core CAPI
+and CAPM3 have; there's nothing newer to pin to yet. See
+`templates/capi/providers/talos-metal3.yaml.j2`'s own header comment for
+what this means for how references to these two types are structured.

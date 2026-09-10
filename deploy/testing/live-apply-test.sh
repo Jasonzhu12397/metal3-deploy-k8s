@@ -112,6 +112,8 @@ CRD_DIR="${PROJECT_DIR}/backend/tests_data/crd_schemas"
 "${K3S_BIN}" kubectl apply -f "${CRD_DIR}/openstackmachinetemplate.yaml" >/dev/null
 "${K3S_BIN}" kubectl apply -f "${CRD_DIR}/vspherecluster.yaml" >/dev/null
 "${K3S_BIN}" kubectl apply -f "${CRD_DIR}/vspheremachinetemplate.yaml" >/dev/null
+"${K3S_BIN}" kubectl apply -f "${CRD_DIR}/talos-bootstrap.yaml" >/dev/null
+"${K3S_BIN}" kubectl apply -f "${CRD_DIR}/talos-controlplane.yaml" >/dev/null
 "${K3S_BIN}" kubectl create namespace metal3 --dry-run=client -o yaml | "${K3S_BIN}" kubectl apply -f - >/dev/null
 echo "[OK] $("${K3S_BIN}" kubectl get crd --no-headers | wc -l | tr -d ' ') CRDs installed."
 echo
@@ -166,6 +168,19 @@ bundle = planner.generate_bundle(
 open(f"{work_dir}/metal3.yaml", "w").write(bundle["cluster_config_yaml"])
 open(f"{work_dir}/metal3-bmh.yaml", "w").write(bundle["bmh_yaml"])
 
+# Metal3 + Talos flavor: same hardware-picking path, different OS/control
+# plane stack (TalosControlPlane instead of KubeadmControlPlane)
+talos_pools = {"control-plane": ([asset("talos-cp-0", 6)], [assignment("control-plane")])}
+talos_bundle = planner.generate_bundle(
+    {
+        "name": "live-talos", "namespace": "default", "control_plane_endpoint": "192.0.2.201",
+        "os_flavor": "talos",
+    },
+    talos_pools,
+)
+open(f"{work_dir}/talos-metal3.yaml", "w").write(talos_bundle["cluster_config_yaml"])
+open(f"{work_dir}/talos-metal3-bmh.yaml", "w").write(talos_bundle["bmh_yaml"])
+
 # Docker (CAPD)
 docker_spec = {
     "name": "live-docker", "namespace": "default", "infrastructure_provider": "docker",
@@ -193,7 +208,7 @@ vs_spec = {
 }
 open(f"{work_dir}/vsphere.yaml", "w").write(gen.render_cluster_config(vs_spec))
 
-print("Generated: metal3.yaml, metal3-bmh.yaml, docker.yaml, openstack.yaml, vsphere.yaml")
+print("Generated: metal3.yaml, metal3-bmh.yaml, talos-metal3.yaml, talos-metal3-bmh.yaml, docker.yaml, openstack.yaml, vsphere.yaml")
 PYEOF
 
 APPLY_FAILED=0

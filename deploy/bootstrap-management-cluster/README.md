@@ -58,14 +58,22 @@ cd deploy/bootstrap-management-cluster
 - `Ironic` 自定义资源的 schema：`spec` 底下没有必填字段，所以`networking: {}`这个最小化写法
   是 schema 层面合法的
 
-**没有验证过的**（这次开发环境的真实限制，不是设计问题）：
+**没有验证过的**（这次开发环境的真实限制，已经查到根因，不是设计问题）：
 - `clusterctl init` 完整跑通——这次撞上了 GitHub API 限流（这个项目开发过程中查了太多次
   未认证的 GitHub API，额度用完了），没能在这次开发环境里跑到底
-- cert-manager/CAPI/CAPM3/IrSO/BMO 这些控制器的 Pod 真的达到 Running 状态——这次开发环境
-  磁盘空间紧张，触发了 `disk-pressure` 污点，Pod 卡在 Pending 调度不上去，这也是开发环境
-  本身的资源限制，不是脚本逻辑的问题
+- **cert-manager/CAPI/CAPM3/IrSO/BMO 这些控制器的 Pod 真的达到 Running 状态——这个在这次
+  开发环境里从原理上做不到，不是"没跑通"，是"永远跑不通"**。追查到底之后确认：这个沙箱的
+  网络策略把 `docker.io`、`registry.k8s.io`、`quay.io` 三大主流容器镜像仓库全部拦截
+  （返回 `x-deny-reason: host_not_allowed`），这应该是防止在沙箱里跑任意未知代码的安全
+  设计。k3s 自己能起来是因为 apiserver/etcd/scheduler 打包在一个二进制文件里，不需要拉
+  镜像；但只要有任何东西要调度成真正的 Pod（CoreDNS、cert-manager、CAPI 控制器等），就
+  需要拉容器镜像，这一步在这个沙箱里无论怎么调整磁盘阈值、绕开限流都过不去。（之前记录的
+  "磁盘压力导致 Pod Pending" 也是真的，是另一个独立的限制因素，但即使解决了磁盘问题，
+  镜像拉取这一步依然会挡住）
 - Ironic 真实连到 BMC、物理机真实 PXE 成功——这个前面说过，任何脚本环境都验证不了，
   必须在你自己的真实网络里跑
 
-这几步只能靠你在自己的真实环境里跑 `./setup.sh` 的时候验证。如果卡住了，把卡在哪一步
-和报错发给我。
+这几步只能靠你在自己的真实环境里跑 `./setup.sh` 的时候验证——但至少现在能确定：**只要你的
+环境能正常访问 docker.io/registry.k8s.io/quay.io 这类公共镜像仓库**（大多数真实服务器/
+云主机环境都可以），这个脚本从原理上是能跑通的，卡住的只是这个特定沙箱的网络限制。如果
+在你自己的环境里跑还是卡住了，把卡在哪一步和报错发给我。

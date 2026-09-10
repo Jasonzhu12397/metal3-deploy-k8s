@@ -322,6 +322,46 @@ a way to reach a *target* cluster's own Kubernetes API (this backend has
 so far only ever talked to the *management* cluster) -- a real
 architectural piece, not just more CRUD, and not built yet.
 
+## Talos Linux on bare metal (an alternative to kubeadm-based Linux)
+
+Set `os_flavor: "talos"` in a metal3 cluster's `spec` to get
+[Talos Linux](https://www.talos.dev/) (immutable, no SSH, API-driven)
+on the physical hardware instead of a traditional distro bootstrapped
+via kubeadm. Not a new `infrastructure_provider` -- it's the same real
+hardware picking / Ironic provisioning / BareMetalHost flow standard
+metal3 already uses, just with `TalosControlPlane` +
+`TalosConfigTemplate` (from Sidero Labs' own Cluster API provider pair,
+CABPT + CACPPT) in place of `KubeadmControlPlane` +
+`KubeadmConfigTemplate`, since Talos doesn't support kubeadm-style
+bootstrapping at all -- see `templates/capi/providers/talos-metal3.yaml.j2`'s
+header comment for exactly what differs and why.
+
+Installing CABPT + CACPPT onto the management cluster isn't handled by
+`deploy/bootstrap-management-cluster/` yet (that script only installs
+`--infrastructure metal3`) -- add
+`--bootstrap talos --control-plane talos` to its `clusterctl init` call
+if you're using this. Validated the same way as every other provider
+template here: against the real, current CABPT/CACPPT CRDs (snapshotted
+in `backend/tests_data/crd_schemas/talos-*.yaml`). Talos's own CAPI
+providers are a generation behind core CAPI/CAPM3 -- `TalosControlPlane`/
+`TalosConfigTemplate` are only served at `v1alpha3` (nothing newer
+exists yet to migrate to), and their references use the older
+`{apiVersion, kind, name}` shape rather than the `{apiGroup, kind, name}`
+shape this project's v1beta2-migrated templates use elsewhere -- both
+confirmed against the real CRDs, not an inconsistency to "fix".
+
+Not verified beyond structural schema validation (same boundary as
+everywhere else that says this): a real Talos node actually booting,
+joining, and running workloads needs real hardware or a real management
+cluster with CABPT/CACPPT's controller pods actually running -- this
+project's own sandbox network policy blocks the container registries
+(`docker.io`, `registry.k8s.io`, `quay.io` all return
+`host_not_allowed`) any Kubernetes controller pod needs images from, so
+that verification step is categorically impossible in this specific
+sandbox regardless of effort, not just "not done yet" -- see
+`deploy/bootstrap-management-cluster/README.md`'s own note on this for
+the full diagnosis.
+
 ## API version migration (v1beta1 -> v1beta2)
 
 This used to be a "known debt" section describing a problem; it's now a
