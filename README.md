@@ -322,6 +322,23 @@ a way to reach a *target* cluster's own Kubernetes API (this backend has
 so far only ever talked to the *management* cluster) -- a real
 architectural piece, not just more CRUD, and not built yet.
 
+## Pre-baked ("golden") images for target cluster nodes
+
+Not needed by default -- this project's standard kubeadm path already
+works with zero custom images (a real official Ubuntu/CentOS cloud
+image + CABPK's own cloud-init data installing kubeadm/kubelet/
+containerd at boot, the way this ecosystem is designed to work).
+`deploy/golden-image-target-node/` exists for restricted-network
+production environments specifically, where target nodes can't reach
+package/container registries at provisioning time -- it bakes those
+packages into the image itself ahead of time. See that directory's own
+README for exactly what got verified building it (debootstrap
+genuinely connecting, after this sandbox's own User-Agent quirk fix)
+versus what didn't (individual package downloads stalling before
+completion, reproduced independently of the same issue in
+deploy/ephemeral-node-cloudinit-kubeadm/ -- confirmed real and
+repeatable, not a one-off).
+
 ## Talos Linux on bare metal (an alternative to kubeadm-based Linux)
 
 Two separate uses of Talos in this project -- don't conflate them:

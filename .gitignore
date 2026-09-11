@@ -32,3 +32,4 @@ deploy/testing/vm-bmc/test_nodes.json
 deploy/bootstrap-management-cluster/.bootstrap-work/
 deploy/ephemeral-node-talos/.eph-node-work/
 deploy/ephemeral-node-cloudinit-kubeadm/.image-work/
+deploy/golden-image-target-node/.image-work/
