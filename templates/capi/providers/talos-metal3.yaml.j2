@@ -78,7 +78,7 @@ spec:
         # current Talos release rather than "latest" for reproducibility
         # -- see https://github.com/siderolabs/talos/releases for newer
         # ones as they ship.
-        url: {{ cluster.image_url | default('https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz') }}
+        url: {{ cluster.image_url | default('https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.zst') }}
         checksum: "{{ cluster.image_checksum | default('') }}"
 {% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
         checksumType: {{ cluster.image_checksum_type }}
@@ -122,7 +122,7 @@ spec:
   template:
     spec:
       image:
-        url: {{ cluster.image_url | default('https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz') }}
+        url: {{ cluster.image_url | default('https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.zst') }}
         checksum: "{{ cluster.image_checksum | default('') }}"
 {% if cluster.image_checksum_type is defined and cluster.image_checksum_type %}
         checksumType: {{ cluster.image_checksum_type }}

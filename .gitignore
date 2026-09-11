@@ -34,3 +34,4 @@ deploy/ephemeral-node-talos/.eph-node-work/
 deploy/ephemeral-node-cloudinit-kubeadm/.image-work/
 deploy/golden-image-target-node/.image-work/
 deploy/target-node-image-builder/.image-builder-work/
+deploy/airgap-bundle-talos/.bundle/

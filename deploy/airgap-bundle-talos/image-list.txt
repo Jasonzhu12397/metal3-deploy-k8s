@@ -1,0 +1,61 @@
+# Every container image the Talos-based path (deploy/ephemeral-node-talos/,
+# templates/capi/providers/talos-metal3.yaml.j2, and
+# deploy/bootstrap-management-cluster/) actually needs pulled at some
+# point, extracted from the REAL release manifests, not guessed:
+#
+#   - CABPT/CACPPT controller images: grepped directly out of the real
+#     bootstrap-components.yaml (v0.6.5) / control-plane-components.yaml
+#     (v0.5.7) release manifests.
+#   - CAPI core / CAPM3 controller images: same, grepped out of the real
+#     cluster-api-components.yaml (v1.11.0) / infrastructure-components.yaml
+#     (v1.13.2, CAPM3) release manifests -- needed even on the Talos
+#     path, since Cluster/Metal3Cluster/Metal3MachineTemplate are still
+#     reconciled by these same controllers regardless of which control
+#     plane/bootstrap provider sits on top.
+#   - cert-manager/BMO/IrSO images: same, grepped out of their own real
+#     release manifests (cert-manager v1.16.2, baremetal-operator
+#     v0.13.4, ironic-standalone-operator v0.11.0).
+#   - Talos's own images (installer, kubelet): read out of a real
+#     `talosctl gen config` output (see deploy/ephemeral-node-talos/
+#     README.md, which documents that exact generation).
+#   - Kubernetes control-plane images: Talos's own default naming
+#     convention (registry.k8s.io/kube-{apiserver,controller-manager,
+#     scheduler,proxy}), version must match whatever k8s_version /
+#     talos_version you're actually deploying -- the versions below are
+#     placeholders matching this project's own template defaults
+#     (see templates/capi/providers/talos-metal3.yaml.j2's k8s_version/
+#     talos_version defaults) and MUST be kept in sync by hand if you
+#     change those.
+#
+# NOT exhaustive by construction, stated plainly rather than implied
+# otherwise: Ironic itself (once the ironic-standalone-operator's own
+# `Ironic` custom resource is applied) runs its own pods (ironic API,
+# dnsmasq, httpd) with their own images that are only known once IrSO
+# actually reconciles that resource against a real, reachable
+# management cluster -- this project's own sandbox can't reach any
+# registry at all (see this directory's README.md), so those specific
+# image references were never observed and could not be added here.
+# Watch `kubectl get pods -n baremetal-operator-system -o
+# jsonpath='{.items[*].spec.containers[*].image}'` on a REAL management
+# cluster after IrSO reconciles its Ironic resource, and add whatever
+# shows up there to this list before relying on it being complete.
+
+quay.io/jetstack/cert-manager-cainjector:v1.16.2
+quay.io/jetstack/cert-manager-controller:v1.16.2
+quay.io/jetstack/cert-manager-webhook:v1.16.2
+quay.io/metal3-io/baremetal-operator:v0.13.4
+quay.io/metal3-io/ironic-standalone-operator:release-0.11
+quay.io/metal3-io/cluster-api-provider-metal3:v1.13.2
+registry.k8s.io/cluster-api/cluster-api-controller:v1.11.0
+registry.k8s.io/cluster-api/kubeadm-bootstrap-controller:v1.11.0
+registry.k8s.io/cluster-api/kubeadm-control-plane-controller:v1.11.0
+ghcr.io/siderolabs/cluster-api-control-plane-talos-controller:v0.5.7
+ghcr.io/siderolabs/cluster-api-talos-controller:v0.6.5
+ghcr.io/siderolabs/installer:v1.12.12
+ghcr.io/siderolabs/kubelet:v1.31.4
+registry.k8s.io/kube-apiserver:v1.31.4
+registry.k8s.io/kube-controller-manager:v1.31.4
+registry.k8s.io/kube-scheduler:v1.31.4
+registry.k8s.io/kube-proxy:v1.31.4
+registry.k8s.io/pause:3.10
+registry.k8s.io/coredns/coredns:v1.11.3

@@ -124,7 +124,7 @@ curl -s -X POST http://localhost:8000/api/v1/clusters \
     "spec": {
       "os_flavor": "talos",
       "talos_version": "v1.12",
-      "image_url": "https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz",
+      "image_url": "https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.zst",
       "talos_config_patches": [
         {"op": "add", "path": "/machine/network/hostname", "value": "talos-cp"}
       ]
@@ -143,7 +143,7 @@ curl -s -X POST http://localhost:8000/api/v1/clusters \
 | 字段（都在 `spec` 里面） | 必填 | 说明 |
 |---|---|---|
 | `os_flavor` | 是，固定填 `"talos"` | 决定走 Talos 模板还是标准 kubeadm 模板 |
-| `image_url` | 否，有默认值 | 真实 Talos 裸机镜像地址（`metal-amd64.raw.xz`），不给的话用模板里写死的 v1.12.12 版本 |
+| `image_url` | 否，有默认值 | 真实 Talos 裸机镜像地址（`metal-amd64.raw.zst`），不给的话用模板里写死的 v1.12.12 版本 |
 | `image_checksum` / `image_checksum_type` | 否 | 跟标准 metal3 集群一样，给了 Ironic 会校验镜像完整性 |
 | `talos_version` | 否，默认 `v1.12` | 写进 `TalosControlPlane`/`TalosConfigTemplate` 的 `talosVersion` 字段，要跟你 eph-node 上装的 CABPT/CACPPT 版本能力对得上 |
 | `talos_config_patches` | 否 | 一个 JSON Patch 数组，直接原样写进 `TalosControlPlane.spec.controlPlaneConfig.controlplane.configPatches`——这是 Talos 自己的机制，用来改任何机器配置字段（网络、磁盘选择、sysctl 等），具体能改哪些路径见 [Talos 官方 Config 参考](https://www.talos.dev/latest/reference/configuration/) |

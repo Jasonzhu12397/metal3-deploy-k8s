@@ -1,0 +1,55 @@
+# Real, current Talos machine config patch redirecting every registry
+# this whole Talos-based path pulls from to your local mirror --
+# machine.registries.mirrors is Talos's own official, documented
+# mechanism for exactly this (see
+# https://docs.siderolabs.com/talos/v1.13/configure-your-talos-cluster/images-container-runtime/pull-through-cache
+# and the air-gapped-specific variant at
+# .../image-cache-registry-mirror), not something invented for this
+# project.
+#
+# How to actually apply this -- pick ONE:
+#
+#   A) Merge into controlplane.yaml/worker.yaml BEFORE first boot --
+#      if you're using deploy/ephemeral-node-talos/generate-eph-node-configs.sh,
+#      the cleanest way is `talosctl gen config ... --config-patch @this-file.yaml`
+#      (talosctl's own real, documented flag for exactly this).
+#
+#   B) Apply as a runtime patch to a node that's already running:
+#        talosctl patch machineconfig --nodes <IP> --patch @this-file.yaml
+#
+# Fill in LOCAL_REGISTRY_HOST below with your actual local registry
+# address (the same one mirror-images.sh's LOCAL_REGISTRY pushed to) --
+# deliberately left as a placeholder rather than a guess, same reasoning
+# as every other site-specific value in this project's deployment
+# scripts.
+machine:
+    registries:
+        mirrors:
+            docker.io:
+                endpoints:
+                    - https://__LOCAL_REGISTRY_HOST__
+            ghcr.io:
+                endpoints:
+                    - https://__LOCAL_REGISTRY_HOST__
+            registry.k8s.io:
+                endpoints:
+                    - https://__LOCAL_REGISTRY_HOST__
+            quay.io:
+                endpoints:
+                    - https://__LOCAL_REGISTRY_HOST__
+        config:
+            __LOCAL_REGISTRY_HOST__:
+                tls:
+                    # Only set this true for a self-signed/internal CA
+                    # you control and trust -- it disables certificate
+                    # verification entirely for this one registry host,
+                    # not a general TLS bypass.
+                    insecureSkipVerify: true
+    # Talos's own installer image -- this MUST point at the local
+    # mirror too, or the very first step of turning this node into a
+    # cluster member (talosctl bootstrap pulling this image) fails
+    # before registries.mirrors above ever gets a chance to redirect
+    # anything, since machine.install.image is a literal reference, not
+    # something the mirror rewrites.
+    install:
+        image: __LOCAL_REGISTRY_HOST__/siderolabs/installer:v1.12.12

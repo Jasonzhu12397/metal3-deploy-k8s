@@ -19,7 +19,7 @@ from app.models.hardware_asset import HardwareAsset  # noqa: E402
 USAGE_MD_TALOS_EXAMPLE_SPEC = {
     "os_flavor": "talos",
     "talos_version": "v1.12",
-    "image_url": "https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz",
+    "image_url": "https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.zst",
     "talos_config_patches": [{"op": "add", "path": "/machine/network/hostname", "value": "talos-cp"}],
 }
 

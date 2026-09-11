@@ -374,6 +374,13 @@ works.
 
 ## Talos Linux on bare metal (an alternative to kubeadm-based Linux)
 
+If your customer's environment has no outbound internet access at all
+(a real, common requirement, not a hypothetical), everything Talos-based
+below needs mirroring first -- see `deploy/airgap-bundle-talos/` for
+that, including a real, previously-wrong disk image URL its own
+development caught and fixed everywhere it appeared (see that
+directory's own README.md for the specifics).
+
 Two separate uses of Talos in this project -- don't conflate them:
 
 1. **As the ephemeral bootstrap node's own OS** -- `deploy/ephemeral-node-talos/`.
