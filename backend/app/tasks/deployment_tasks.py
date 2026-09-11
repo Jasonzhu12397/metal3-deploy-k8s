@@ -3,7 +3,15 @@ Celery task(s) that drive a Deployment through its phases:
 
   1. generate bmh.yaml / k8s-config.yaml / eph-net.yaml from the cluster spec
   2. bootstrap the ephemeral (PXE, in-memory) node as the temporary CAPI
-     management cluster
+     management cluster -- see deploy/ephemeral-node-talos/ for the real,
+     Talos-Linux-based (no Docker, no k3s) implementation of this step:
+     PXE boot -> Talos maintenance mode -> talosctl bootstrap turns that
+     one live-OS node into a real single-node Kubernetes cluster, which
+     deploy/bootstrap-management-cluster/'s existing "use an existing
+     cluster" path then installs CAPI/CAPM3/Ironic/BMO onto. This
+     function itself still assumes that cluster already exists and its
+     kubeconfig is at MGMT_KUBECONFIG_PATH by the time it runs -- it
+     does not invoke either script itself.
   3. apply BareMetalHost objects, wait for them to become "available"
   4. apply Cluster / Metal3Cluster / KubeadmControlPlane / MachineDeployment
   5. wait for the control plane to come up, install addons

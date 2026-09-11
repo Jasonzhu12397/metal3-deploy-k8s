@@ -324,6 +324,26 @@ architectural piece, not just more CRUD, and not built yet.
 
 ## Talos Linux on bare metal (an alternative to kubeadm-based Linux)
 
+Two separate uses of Talos in this project -- don't conflate them:
+
+1. **As the ephemeral bootstrap node's own OS** -- `deploy/ephemeral-node-talos/`.
+   PXE-boot a bare machine into Talos (live, in-memory, no disk install
+   needed to start, no Docker, no k3s -- runs containerd + real upstream
+   Kubernetes directly), `talosctl bootstrap` it into a real single-node
+   Kubernetes cluster, then hand that cluster to
+   `deploy/bootstrap-management-cluster/` (which already supports "use
+   an existing cluster") to install CAPI/CAPM3/Ironic/BMO onto. This is
+   the concrete implementation of the "ephemeral (PXE, in-memory) node"
+   step `tasks/deployment_tasks.py`'s own docstring has described since
+   this project's first commit.
+2. **As the TARGET cluster's own OS** -- `os_flavor: "talos"` below,
+   an alternative to the standard kubeadm-based Linux this project
+   deploys onto provisioned hardware by default.
+
+These are independent choices -- you can PXE-boot the ephemeral node
+with Talos while still deploying standard kubeadm-based Linux as the
+target cluster's OS, or vice versa, or both, or neither.
+
 Set `os_flavor: "talos"` in a metal3 cluster's `spec` to get
 [Talos Linux](https://www.talos.dev/) (immutable, no SSH, API-driven)
 on the physical hardware instead of a traditional distro bootstrapped
