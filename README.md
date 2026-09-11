@@ -344,15 +344,33 @@ repeatable, not a one-off).
 `Metal3MachineTemplate.spec.template.spec.image.url` -- what Ironic
 actually writes to a node's disk -- has always been something this
 project assumed you already had, for the standard (non-Talos) kubeadm
-path. `deploy/target-node-image-builder/` wraps
-[kubernetes-sigs/image-builder](https://github.com/kubernetes-sigs/image-builder)
-(the real, official, Cluster-API-recommended tool for this, not a
-custom pipeline) to actually build one -- a `raw` disk image with
-kubeadm/kubelet/containerd pre-installed for a pinned Kubernetes minor
-version. See that directory's own README.md for exactly what got
-verified (the real repo, the real build config) versus what needs a
-real KVM-capable machine to actually run (the build itself boots a full
-Ubuntu Server installer inside QEMU).
+path. Two independent answers exist, for two different situations --
+neither replaces the other:
+
+- **Your provisioning network can reach pkgs.k8s.io / apt mirrors /
+  registries** (the common case): you don't need a custom image at all.
+  A real official cloud vendor image (Ubuntu/CentOS, already has
+  cloud-init) + CABPK's own generated cloud-init data installing
+  kubeadm/kubelet/containerd at boot time is how this ecosystem is
+  designed to work by default. If you still want a more controlled,
+  purpose-built image (specific package versions baked in, faster
+  provisioning, whatever your own reasons), `deploy/target-node-image-builder/`
+  wraps [kubernetes-sigs/image-builder](https://github.com/kubernetes-sigs/image-builder)
+  -- the real, official, Cluster-API-recommended tool for this -- to
+  build a `raw` disk image the standard way (Packer + a full OS
+  installer + Ansible).
+- **Your provisioning network is restricted** and target nodes can't
+  reach those at provisioning time: `deploy/golden-image-target-node/`
+  builds a minimal, disk-installed (GRUB, not live-boot) image with
+  kubeadm/kubelet/containerd pre-baked in via debootstrap, so nodes
+  never need network access to install them at boot.
+
+Both directories' own README.md state exactly what got verified versus
+what needs real KVM-capable hardware and/or unrestricted network access
+to actually run to completion -- neither was fully build-tested in this
+project's own development sandbox, for reasons specific to that sandbox
+(documented in each), not a statement about whether the approach itself
+works.
 
 ## Talos Linux on bare metal (an alternative to kubeadm-based Linux)
 

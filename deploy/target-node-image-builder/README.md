@@ -1,10 +1,22 @@
 # target-node-image-builder：目标集群节点用的操作系统镜像从哪来
 
+**先看你的场景是不是真的需要这个**——如果你的生产网络能正常访问 `pkgs.k8s.io`/
+公网 apt 源/容器镜像仓库，其实**不需要任何自定义镜像**：标准做法是 Ironic 直接写
+官方 Ubuntu/CentOS 云镜像（自带 cloud-init），CABPK 生成的 cloud-init 数据在节点
+启动时联网装好 kubeadm/kubelet/containerd。这个目录是给"网络没问题，但想要更可控、
+更快速的自定义镜像"这种场景用的。
+
+**如果你的生产网络是受限的**（节点在 provisioning 时候连不上公网源）——那种场景
+应该用 `deploy/golden-image-target-node/`，那边是把包提前烘焙进镜像、节点启动时
+完全不用联网这条路，跟这个目录用的是不同的工具链（自己 debootstrap 打盘，不是
+下面这套 Packer+QEMU 官方工具）。
+
 这个项目从一开始就有个没人问过的空白：`Metal3MachineTemplate.spec.template.spec.image.url`
 （这个后端生成的清单里，Ironic 真正拿去写盘的那个字段）——这个 URL 指向的镜像本身
 **从哪来**，这个项目从来没有回答过，一直假设你自己已经有一个。
 
-这个目录回答这个问题，用的是真实、官方的工具——**不是自己现场拼一个构建流程**：
+这个目录回答的是"网络没问题，但想要标准、官方推荐的构建流程"这个版本，用的是真实、
+官方的工具——**不是自己现场拼一个构建流程**：
 [`kubernetes-sigs/image-builder`](https://github.com/kubernetes-sigs/image-builder)，
 Kubernetes SIG Cluster Lifecycle 官方维护、Cluster API 项目自己推荐使用的镜像构建工具
 （CAPZ 的官方文档原话："Cluster API uses the Kubernetes Image Builder tools"）。

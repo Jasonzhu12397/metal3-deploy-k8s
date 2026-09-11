@@ -19,6 +19,12 @@ kubeadm bootstrap 组件）生成一份 cloud-init 数据（真实网络配置�
 **live/内存启动**镜像；这个是给 target 集群节点用的**真实装到硬盘、带 GRUB 引导**
 的镜像——target 节点是要长期跑下去的，不能是内存里的临时状态。
 
+跟 `deploy/target-node-image-builder/` 的关键区别：那边包装的是官方
+`kubernetes-sigs/image-builder` 工具（Packer+QEMU+完整 Ubuntu Server 安装流程），
+适合"网络没问题、想要标准构建流程"的场景；这个目录是自己用 `debootstrap` 打一个
+最小化的镜像，专门针对"网络受限、装包这一步必须提前烘焙进镜像"这个场景——两个
+工具链不同，选哪个取决于你的网络环境，不是谁更好谁更差。
+
 ## 用法
 
 ```bash
