@@ -106,6 +106,68 @@ curl -s -X POST http://localhost:8000/api/v1/clusters \
 
 ⚠️ **老实说明一下限制**：OpenStack/vSphere/KubeVirt 这三份模板里的字段名是照 CAPO/CAPV/CAPK 常见的 CRD 结构写的，但这几个 provider 的 CRD 在不同版本间会变，这里没有真实的 OpenStack/vSphere/KubeVirt 环境能验证渲染出来的 YAML 真的能拉起一个健康集群——渲染逻辑和整条 orchestration 状态机是测过的（见 `tests/test_cloud_providers.py`），但"这些字段名对不对"这件事需要你们自己对着 `kubectl explain <kind>.spec...`（在装了对应 CAPI provider 的管理集群上）核对一遍。相比之下 metal3 那条路径是照着更接近真实的 Ironic/baremetal-operator 数据格式测过的，可信度更高。
 
+### 1.2 用 Talos 而不是标准 kubeadm 的裸金属集群
+
+跟标准 metal3 集群走的是**完全一样的硬件分配流程**（第 2-4 步不变），唯一区别是在
+`spec` 里加 `os_flavor: "talos"`——这一步之后目标集群的控制面会渲染成
+`TalosControlPlane`/`TalosConfigTemplate`，而不是默认的
+`KubeadmControlPlane`/`KubeadmConfigTemplate`。
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/clusters \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "talos-prod-01",
+    "namespace": "metal3",
+    "control_plane_count": 3,
+    "control_plane_endpoint": "192.0.2.1",
+    "spec": {
+      "os_flavor": "talos",
+      "talos_version": "v1.12",
+      "image_url": "https://github.com/siderolabs/talos/releases/download/v1.12.12/metal-amd64.raw.xz",
+      "talos_config_patches": [
+        {"op": "add", "path": "/machine/network/hostname", "value": "talos-cp"}
+      ]
+    }
+  }'
+```
+
+**这几个字段必须放在 `spec` 里面，不能放在请求体顶层**——`ClusterCreate` 的 schema
+里根本没有声明 `os_flavor`/`talos_version`/`image_url`/`talos_config_patches` 这几个
+名字，它们只是 `spec` 这个自由字典里的自定义键，靠 `templates/capi/providers/talos-metal3.yaml.j2`
+自己去读。放错位置（比如跟 `name`/`control_plane_count` 平级）不会报错，只会被
+静默忽略，渲染出来还是标准 kubeadm 集群——这是这条路径最容易踩的坑，上面这个
+例子已经用真实代码路径跑通验证过（见 `tests/test_talos_metal3.py`），照抄字段名
+和结构就不会踩这个坑。
+
+| 字段（都在 `spec` 里面） | 必填 | 说明 |
+|---|---|---|
+| `os_flavor` | 是，固定填 `"talos"` | 决定走 Talos 模板还是标准 kubeadm 模板 |
+| `image_url` | 否，有默认值 | 真实 Talos 裸机镜像地址（`metal-amd64.raw.xz`），不给的话用模板里写死的 v1.12.12 版本 |
+| `image_checksum` / `image_checksum_type` | 否 | 跟标准 metal3 集群一样，给了 Ironic 会校验镜像完整性 |
+| `talos_version` | 否，默认 `v1.12` | 写进 `TalosControlPlane`/`TalosConfigTemplate` 的 `talosVersion` 字段，要跟你 eph-node 上装的 CABPT/CACPPT 版本能力对得上 |
+| `talos_config_patches` | 否 | 一个 JSON Patch 数组，直接原样写进 `TalosControlPlane.spec.controlPlaneConfig.controlplane.configPatches`——这是 Talos 自己的机制，用来改任何机器配置字段（网络、磁盘选择、sysctl 等），具体能改哪些路径见 [Talos 官方 Config 参考](https://www.talos.dev/latest/reference/configuration/) |
+
+Worker 池怎么加，跟标准 metal3 集群完全一样（第 4 步 `/pools/{pool}/assign`），
+不需要额外传 Talos 相关字段——worker 的 `TalosConfigTemplate` 会自动跟着
+`os_flavor` 走。
+
+**这条路径要能真正跑起来，管理集群上除了标准的 `--infrastructure metal3` 之外，
+还要多装两个 provider**：
+
+```bash
+clusterctl init --infrastructure metal3 --bootstrap talos --control-plane talos
+```
+
+`deploy/bootstrap-management-cluster/setup.sh` 目前默认不装这两个（大部分部署用不上），
+自己在管理集群上补跑一下这条命令即可。
+
+eph-node 本身要不要也用 Talos（而不是 `deploy/ephemeral-node-cloudinit-kubeadm/`
+那套 cloud-init+kubeadm 方案），是完全独立的另一个选择——见
+`deploy/ephemeral-node-talos/README.md`，那边讲的是 eph-node **自己**怎么通过
+`talosctl gen config` 准备配置、PXE 启动、`talosctl bootstrap` 变成单节点集群，
+跟这里"目标集群用不用 Talos"是两件不相关的事，可以任意组合。
+
 ---
 
 ## 2. 注册物理机（BareMetalHost）

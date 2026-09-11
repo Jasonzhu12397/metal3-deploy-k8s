@@ -56,6 +56,67 @@ CONTROL_PLANE_ENDPOINT="https://<这台裸机自己的IP>:6443" ./generate-eph-n
 真实、当前有效的官方命令（推配置、bootstrap、拿 kubeconfig），这几步需要真实的联网
 裸机才能执行，脚本本身没法替你跑。
 
+## `controlplane.yaml` 生成出来长什么样、要改哪几个字段
+
+`talosctl gen config` 生成的是一份**注释非常详细**的真实配置（下面是真的跑出来的
+结构，密钥/证书内容替换成了占位符，其他都是原样）：
+
+```yaml
+version: v1alpha1
+debug: false
+persist: true
+machine:
+    type: controlplane
+    token: <真实 token，自动生成，不用你管>
+    ca:
+        crt: <真实 CA 证书，自动生成>
+        key: <真实 CA 私钥，自动生成>
+    kubelet:
+        image: ghcr.io/siderolabs/kubelet:v1.35.8
+    network: {}          # ← 网络配置，见下面
+    install:
+        disk: /dev/sda    # ← 装系统的磁盘，见下面
+        image: ghcr.io/siderolabs/installer:v1.12.12
+cluster:
+    ...                   # 集群级配置（Pod/Service CIDR、token 等），一般不用改
+```
+
+**默认生成出来的配置，`machine.network` 是空的**——意味着走 DHCP。如果你的
+eph-node 需要固定 IP（大多数生产场景都需要），要自己在 `network:` 底下加：
+
+```yaml
+machine:
+    network:
+        hostname: eph-node
+        interfaces:
+            - interface: eth0          # 换成这台机器真实的网卡名
+              addresses:
+                - 192.0.2.50/24        # 换成这台机器真实要用的静态 IP
+              routes:
+                - network: 0.0.0.0/0
+                  gateway: 192.0.2.1   # 换成真实网关
+```
+
+**同样故意不帮你把这几个值填进 `generate-eph-node-configs.sh` 自动生成的文件里**——
+网卡名、IP、网关是你自己网络环境的事，跟这个项目其他地方（`bootstrap-management-cluster/`
+的 `Ironic.spec.networking`、`ephemeral-node-cloudinit-kubeadm/` 的 `network-config.yaml`）
+是同一个原则：脚本生成的是"骨架"，网络这一段必须你自己核对着改，改错一个网卡名或者
+IP 冲突，代价是真实网络故障。
+
+**`machine.install.disk` 也要核对**——默认写的是 `/dev/sda`，如果这台机器的系统盘
+设备名不是这个（比如 NVMe 盘会是 `/dev/nvme0n1`），必须改成真实的，装错盘是真实的
+数据风险。
+
+改完之后重新跑：
+
+```bash
+talosctl apply-config --insecure --nodes <IP> --file controlplane.yaml
+```
+
+如果这台机器已经 bootstrap 过、想改配置，要换成不带 `--insecure` 的
+`talosctl apply-config --nodes <IP> --file controlplane.yaml`（这时候节点已经有
+自己的证书了，走的是认证过的 API，不是 maintenance mode 那个不认证的临时接口）。
+
 ## 这次开发时，实际验证过什么、没验证过什么
 
 如实说清楚，跟这个项目其他地方的诚实标准一样：
