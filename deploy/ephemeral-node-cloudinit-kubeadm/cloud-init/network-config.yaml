@@ -1,0 +1,26 @@
+# cloud-init "network-config" (version 2 / netplan-style schema) for the
+# ephemeral node's own NIC.
+#
+# Deliberately left as a TEMPLATE with placeholders rather than a real
+# IP/interface -- same reasoning as deploy/bootstrap-management-cluster/'s
+# Ironic `networking: {}` and this project's other site-specific-network
+# notes: guessing an interface name or static IP wrong here doesn't just
+# fail to boot, it can put a real IP conflict onto a real network
+# segment. Fill in the three placeholders below for your actual
+# environment before serving this file.
+network:
+  version: 2
+  ethernets:
+    # Replace with the ephemeral node's real NIC name (what it's called
+    # differs by hardware/driver -- enp1s0, eth0, ens192... there is no
+    # single correct guess).
+    __REPLACE_WITH_REAL_INTERFACE_NAME__:
+      addresses:
+        # A real, free static IP on your actual provisioning network,
+        # in CIDR form, e.g. 192.0.2.50/24
+        - __REPLACE_WITH_REAL_STATIC_IP_CIDR__
+      gateway4: __REPLACE_WITH_REAL_GATEWAY_IP__
+      nameservers:
+        addresses:
+          - 8.8.8.8
+          - 1.1.1.1

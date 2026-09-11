@@ -1,0 +1,82 @@
+#cloud-config
+# cloud-init "user-data" for the cloud-init + kubeadm ephemeral node.
+#
+# Consumed via cloud-init's NoCloud datasource -- the live-booted image
+# built by build-eph-node-image.sh includes cloud-init itself and is
+# configured (via a kernel cmdline parameter set in the PXE boot config,
+# see README.md) to fetch this file plus meta-data and network-config
+# over HTTP from wherever you serve pxe-assets/ from. This is a real,
+# standard cloud-init mechanism (ds=nocloud-net;s=http://<server>/path/),
+# not something invented for this project.
+#
+# What this actually does, in order:
+#   1. Brings up networking on the ephemeral node's NIC (the real
+#      network settings live in network-config.yaml alongside this
+#      file -- deliberately NOT filled in here with a guessed IP/
+#      interface name, same reasoning as this project's other
+#      site-specific-networking notes: a wrong static IP or interface
+#      name is actively harmful, not just wrong).
+#   2. Runs `kubeadm init` to turn this one live-booted node into a
+#      real, single-node Kubernetes control plane -- kubeadm/kubelet/
+#      containerd are baked into the image itself (see
+#      build-eph-node-image.sh), not installed at boot time, so this
+#      step needs no network access beyond what kubeadm itself always
+#      needs (pulling the Kubernetes control-plane container images --
+#      see this file's own runcmd for exactly which registry).
+#   3. Writes out a ready-to-use kubeconfig at a fixed, known path so
+#      whatever process retrieves it (scp, a metadata service, however
+#      your PXE/provisioning flow is wired) doesn't have to guess.
+
+package_update: false
+package_upgrade: false
+
+write_files:
+  - path: /etc/eph-node-kubeadm-init.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+      # Idempotency guard -- cloud-init's runcmd runs on every boot by
+      # default unless the module frequency is set to "once"; this
+      # script is written defensively regardless, since a live-booted
+      # node re-running kubeadm init a second time is not something to
+      # rely on cloud-init's own bookkeeping alone to prevent.
+      if [ -f /etc/kubernetes/admin.conf ]; then
+        echo "kubeadm already initialized -- skipping"
+        exit 0
+      fi
+      kubeadm init \
+        --pod-network-cidr=192.168.0.0/16 \
+        --ignore-preflight-errors=NumCPU,Mem
+      mkdir -p /root/.kube
+      cp /etc/kubernetes/admin.conf /root/.kube/config
+      # Single-node cluster -- this node only ever runs CAPI/CAPM3/
+      # Ironic/BMO controllers, never real workloads, so untaint it the
+      # same way this project's own asset_planner.py does for a
+      # genuinely single-node target cluster (see that module's
+      # allow_workloads_on_control_plane handling) -- a control-plane
+      # taint with nothing to schedule workloads elsewhere is not
+      # useful here.
+      kubectl --kubeconfig=/root/.kube/config taint nodes --all \
+        node-role.kubernetes.io/control-plane- || true
+
+  - path: /etc/systemd/system/eph-node-kubeadm-init.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=One-shot kubeadm init for this ephemeral node
+      After=network-online.target containerd.service
+      Wants=network-online.target
+      ConditionPathExists=!/etc/kubernetes/admin.conf
+
+      [Service]
+      Type=oneshot
+      ExecStart=/etc/eph-node-kubeadm-init.sh
+      RemainAfterExit=true
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now eph-node-kubeadm-init.service
