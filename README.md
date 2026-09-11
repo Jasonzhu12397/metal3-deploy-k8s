@@ -339,6 +339,21 @@ completion, reproduced independently of the same issue in
 deploy/ephemeral-node-cloudinit-kubeadm/ -- confirmed real and
 repeatable, not a one-off).
 
+## Where a target node's own OS image comes from
+
+`Metal3MachineTemplate.spec.template.spec.image.url` -- what Ironic
+actually writes to a node's disk -- has always been something this
+project assumed you already had, for the standard (non-Talos) kubeadm
+path. `deploy/target-node-image-builder/` wraps
+[kubernetes-sigs/image-builder](https://github.com/kubernetes-sigs/image-builder)
+(the real, official, Cluster-API-recommended tool for this, not a
+custom pipeline) to actually build one -- a `raw` disk image with
+kubeadm/kubelet/containerd pre-installed for a pinned Kubernetes minor
+version. See that directory's own README.md for exactly what got
+verified (the real repo, the real build config) versus what needs a
+real KVM-capable machine to actually run (the build itself boots a full
+Ubuntu Server installer inside QEMU).
+
 ## Talos Linux on bare metal (an alternative to kubeadm-based Linux)
 
 Two separate uses of Talos in this project -- don't conflate them:
