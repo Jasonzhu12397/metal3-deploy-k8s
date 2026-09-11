@@ -14,9 +14,12 @@ Celery task(s) that drive a Deployment through its phases:
      module's docstring for why)
 
 Each step publishes progress via ConnectionManager so the API layer's
-WebSocket route can relay it to clients. Long-running waits are simple
-polling loops here; swap in Metal3/CAPI event watches for lower latency
-if needed.
+WebSocket route can relay it to clients. Long-running waits use
+exponentially-backed-off polling (see _wait_for_bmh_ready) rather than a
+real Kubernetes watch -- a real watch (with correct resourceVersion
+bookmarking and reconnect-on-410-Gone) is a legitimate further
+improvement, but a half-correct one is worse than honest polling; not
+attempted here without being able to verify it properly.
 """
 from __future__ import annotations
 
@@ -99,6 +102,64 @@ async def _set_phase(deployment_id: str, phase: DeploymentPhase, message: str = 
     await manager.broadcast(deployment_id, {"phase": phase.value, "message": message})
 
 
+class BMHProvisioningError(RuntimeError):
+    """Raised when a BareMetalHost reports a real Ironic-level error
+    (status.errorMessage) rather than just still being in progress --
+    distinguishes "something is actually broken" from "still working",
+    so a permanently-failed host doesn't get polled uselessly for the
+    rest of BMH_READY_TIMEOUT before finally timing out with a much
+    less useful generic message."""
+
+
+async def _wait_for_bmh_ready(
+    metal3: Metal3Service,
+    hosts: list[dict],
+    namespace: str,
+    timeout_seconds: float,
+    initial_delay: float = 3.0,
+    max_delay: float = 30.0,
+    backoff_factor: float = 1.5,
+) -> None:
+    """Polls every host in `hosts` until each reaches "available"/
+    "provisioned"/"ready", or raises.
+
+    Exponentially backed off (3s -> 30s cap) rather than a fixed
+    interval -- the fixed 15s this replaced hit Ironic just as hard
+    whether a host had just started registering or had been sitting
+    ready for ten minutes. Not a real Kubernetes watch (see this
+    module's own docstring for why that's a real further improvement,
+    not attempted here without being able to verify it properly), but a
+    meaningfully better polling loop than what it replaces regardless:
+    it also actually reads status.errorMessage/errorType (real
+    BareMetalHost CRD fields -- see backend/tests_data/crd_schemas/
+    baremetalhost.yaml) and fails fast with the real Ironic-reported
+    reason the moment ANY host errors, rather than continuing to poll a
+    permanently-broken host for the rest of the timeout only to raise a
+    generic "not ready in time" at the end with no diagnostic value.
+    """
+    deadline = time.time() + timeout_seconds
+    pending = {h["name"] for h in hosts}
+    delay = initial_delay
+    while pending and time.time() < deadline:
+        for name in list(pending):
+            status = metal3.get_host_status(name, namespace) or {}
+            error_message = status.get("errorMessage")
+            if error_message:
+                error_type = status.get("errorType") or "unknown"
+                raise BMHProvisioningError(
+                    f"BareMetalHost '{name}' reported an Ironic error ({error_type}): {error_message}"
+                )
+            state = status.get("provisioning", {}).get("state")
+            if state in ("available", "provisioned", "ready"):
+                pending.discard(name)
+        if pending:
+            remaining = max(0.0, deadline - time.time())
+            await asyncio.sleep(min(delay, remaining))
+            delay = min(delay * backoff_factor, max_delay)
+    if pending:
+        raise TimeoutError(f"BMH(s) not ready in time: {sorted(pending)}")
+
+
 async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str) -> None:
     metal3 = Metal3Service()
     capi = CAPIService()
@@ -130,18 +191,7 @@ async def _run_deployment(deployment_id: str, cluster_spec: dict, namespace: str
         # "available" before moving on.
 
         await _set_phase(deployment_id, DeploymentPhase.WAITING_FOR_HOSTS, "polling BMH state")
-        deadline = time.time() + settings.BMH_READY_TIMEOUT
-        pending = {h["name"] for h in hosts}
-        while pending and time.time() < deadline:
-            for name in list(pending):
-                status = metal3.get_host_status(name, namespace)
-                state = (status or {}).get("provisioning", {}).get("state")
-                if state in ("available", "provisioned", "ready"):
-                    pending.discard(name)
-            if pending:
-                await asyncio.sleep(15)
-        if pending:
-            raise TimeoutError(f"BMH(s) not ready in time: {sorted(pending)}")
+        await _wait_for_bmh_ready(metal3, hosts, namespace, timeout_seconds=settings.BMH_READY_TIMEOUT)
 
         await _set_phase(deployment_id, DeploymentPhase.APPLYING_CLUSTER, "applying Cluster API resources")
         capi.apply_cluster(cluster_spec, namespace)

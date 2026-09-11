@@ -27,7 +27,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
 from app.core.db import AsyncSessionLocal, init_db  # noqa: E402
 from app.models.cluster import Cluster  # noqa: E402
 from app.models.deployment import Deployment, DeploymentPhase  # noqa: E402
-from app.tasks.deployment_tasks import _run_deployment  # noqa: E402
+from app.tasks.deployment_tasks import BMHProvisioningError, _run_deployment, _wait_for_bmh_ready  # noqa: E402
 
 
 async def _make_cluster_and_deployment(name: str) -> tuple[uuid.UUID, uuid.UUID]:
@@ -364,3 +364,119 @@ def test_one_failed_addon_does_not_block_the_others_but_still_fails_the_deployme
     assert "[kubevirt] FAILED" in dep.log
     assert "[kube-ovn] installed" in dep.log
     assert "kubevirt" in dep.error_message
+
+
+def test_wait_for_bmh_ready_succeeds_once_every_host_reports_available():
+    hosts = [{"name": "node-0"}, {"name": "node-1"}]
+    call_count = {"node-0": 0, "node-1": 0}
+
+    class FakeMetal3:
+        def get_host_status(self, name, namespace):
+            call_count[name] += 1
+            # node-0 ready immediately, node-1 takes a couple of polls
+            state = "available" if call_count[name] >= (1 if name == "node-0" else 2) else "registering"
+            return {"provisioning": {"state": state}}
+
+    asyncio.run(_wait_for_bmh_ready(FakeMetal3(), hosts, "metal3", timeout_seconds=5, initial_delay=0.01, max_delay=0.02))
+    assert call_count["node-0"] >= 1
+    assert call_count["node-1"] >= 2
+
+
+def test_wait_for_bmh_ready_backs_off_rather_than_polling_at_a_fixed_interval():
+    """The actual behavioral change this replaces a fixed 15s sleep
+    with: successive delays must grow (capped), not stay constant --
+    otherwise this is cosmetically different code with the same
+    "hammer the API at a fixed rate regardless of how long we've been
+    waiting" behavior it was meant to fix.
+
+    Mocks time.time() too, not just asyncio.sleep -- sleep alone doesn't
+    actually advance wall-clock time, so the real time.time()-based
+    deadline check would otherwise busy-loop for the real 100-second
+    budget with zero actual delay per iteration (this really happened
+    while writing this test: an unbounded, memory-eating spin that got
+    OOM-killed, not a hang in the function under test)."""
+    delays_seen = []
+    fake_now = {"t": 1_000_000.0}
+
+    async def fake_sleep(seconds):
+        delays_seen.append(seconds)
+        fake_now["t"] += seconds
+
+    hosts = [{"name": "slow-node"}]
+
+    class FakeMetal3:
+        def get_host_status(self, name, namespace):
+            return {"provisioning": {"state": "registering"}}  # never becomes ready
+
+    with patch("app.tasks.deployment_tasks.asyncio.sleep", side_effect=fake_sleep), \
+         patch("app.tasks.deployment_tasks.time.time", side_effect=lambda: fake_now["t"]):
+        with pytest.raises(TimeoutError):
+            asyncio.run(
+                _wait_for_bmh_ready(
+                    FakeMetal3(), hosts, "metal3", timeout_seconds=100,
+                    initial_delay=1.0, max_delay=8.0, backoff_factor=2.0,
+                )
+            )
+
+    # 1.0, 2.0, 4.0, 8.0, 8.0, ... -- grows then caps, never shrinks
+    # before hitting the cap. The very last entry may be clamped smaller
+    # than the cap (the function correctly never sleeps past its own
+    # deadline), so check the cap itself rather than the exact last value.
+    assert delays_seen[0] == 1.0
+    assert delays_seen[1] == 2.0
+    assert delays_seen[2] == 4.0
+    assert all(d <= 8.0 for d in delays_seen)
+    assert delays_seen.count(8.0) >= 2, "must actually reach and stay at the cap, not just approach it once"
+
+
+def test_wait_for_bmh_ready_fails_fast_on_a_real_ironic_error_instead_of_polling_out_the_timeout():
+    """The actual bug this fixes: a permanently-broken host (bad BMC
+    creds, unreachable BMC, whatever Ironic itself gives up on) used to
+    get silently re-polled for the FULL BMH_READY_TIMEOUT (30 minutes by
+    default) before finally raising a generic, undiagnostic "not ready
+    in time" -- must instead raise immediately, with Ironic's own real
+    error message, the moment status.errorMessage appears."""
+    poll_count = {"n": 0}
+
+    class FakeMetal3:
+        def get_host_status(self, name, namespace):
+            poll_count["n"] += 1
+            return {
+                "provisioning": {"state": "registering"},
+                "errorMessage": "Failed to connect to BMC: Authentication Error",
+                "errorType": "registration error",
+            }
+
+    with pytest.raises(BMHProvisioningError, match="Authentication Error"):
+        asyncio.run(
+            _wait_for_bmh_ready(
+                FakeMetal3(), [{"name": "bad-bmc-node"}], "metal3",
+                timeout_seconds=1800, initial_delay=0.01, max_delay=0.02,
+            )
+        )
+    # must fail on the FIRST poll, not after retrying for a while first
+    assert poll_count["n"] == 1
+
+
+def test_wait_for_bmh_ready_one_broken_host_does_not_wait_for_others_to_also_fail():
+    """A single bad host must abort the whole wait immediately -- not
+    wait for every OTHER host to individually time out too before
+    surfacing the one real, actionable error."""
+
+    class FakeMetal3:
+        def get_host_status(self, name, namespace):
+            if name == "broken-node":
+                return {"provisioning": {"state": "registering"}, "errorMessage": "power on failed"}
+            return {"provisioning": {"state": "registering"}}  # would-be-fine node, just slow
+
+    with pytest.raises(BMHProvisioningError, match="power on failed"):
+        asyncio.run(
+            _wait_for_bmh_ready(
+                FakeMetal3(),
+                [{"name": "broken-node"}, {"name": "slow-but-fine-node"}],
+                "metal3",
+                timeout_seconds=1800,
+                initial_delay=0.01,
+                max_delay=0.02,
+            )
+        )
