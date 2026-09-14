@@ -78,3 +78,13 @@ class Cluster(TimestampedModel):
     # spec["kubevirt"] = {storage_class_name, namespace}) and where
     # control_plane_flavor/control_plane_image live for cloud providers.
     spec: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Per-addon REAL install status, separate from spec["addons"] (which
+    # only ever records intent -- "should this addon be on"). Keyed by
+    # addon name: {"status": "installing"|"installed"|"failed",
+    # "message": str, "updated_at": iso8601 str}. Populated by
+    # tasks.addon_tasks.install_addon_task, the actual trigger for
+    # api/addons.py's enable_addon endpoint -- clicking "enable" in the
+    # App Store on an already-deployed cluster now really installs the
+    # addon against that cluster's live kubeconfig, not just records
+    # intent for some hypothetical future redeploy.
+    addon_status: Mapped[dict] = mapped_column(JSON, default=dict)

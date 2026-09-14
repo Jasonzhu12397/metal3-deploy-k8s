@@ -33,6 +33,15 @@ export default function AppCatalog() {
   const { data: items, isLoading } = useQuery({
     queryKey: ["addons", clusterId || "catalog"],
     queryFn: () => (clusterId ? api.addons.forCluster(clusterId) : api.addons.catalog()),
+    // Installing happens asynchronously against the target cluster
+    // (tasks/addon_tasks.py) -- keep polling while anything is still
+    // "installing" so the badge below updates on its own once the real
+    // install finishes, rather than requiring a manual page refresh to
+    // find out it's done.
+    refetchInterval: (query) => {
+      const data = query.state.data as AddonCatalogItem[] | undefined;
+      return data?.some((a) => a.install_status === "installing") ? 2000 : false;
+    },
   });
 
   const enableMutation = useMutation({
@@ -43,7 +52,6 @@ export default function AppCatalog() {
     mutationFn: (name: string) => api.addons.disable(clusterId, name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["addons", clusterId] }),
   });
-
   const localizedName = (entry: AddonCatalogItem) => t(`addon.${entry.name}.name` as TranslationKey);
   const localizedDesc = (entry: AddonCatalogItem) => t(`addon.${entry.name}.desc` as TranslationKey);
 
@@ -137,9 +145,32 @@ export default function AppCatalog() {
                     </div>
                   </div>
                   {clusterId &&
-                    (entry.enabled ? (
+                    (entry.install_status === "installing" ? (
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-processing-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-processing)]">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> {t("catalog.installing")}
+                      </span>
+                    ) : entry.install_status === "failed" ? (
+                      <span
+                        className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-danger-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-danger)]"
+                        title={entry.install_message ?? undefined}
+                      >
+                        {t("catalog.installFailed")}
+                      </span>
+                    ) : entry.install_status === "installed" ? (
                       <span className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-success-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-success)]">
                         <Check size={10} /> {t("catalog.installed")}
+                      </span>
+                    ) : entry.enabled ? (
+                      // enabled (intent recorded) but no real install
+                      // attempt has completed/started yet -- distinct
+                      // from "installed", deliberately not reusing that
+                      // label here (see this component's own history:
+                      // this exact badge used to say "installed" for
+                      // "enabled" regardless of whether anything had
+                      // actually been installed, which is precisely the
+                      // confusion real install_status now exists to fix).
+                      <span className="shrink-0 rounded-full bg-[var(--color-idle-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-ink-faint)]">
+                        {t("catalog.enabledNotInstalled")}
                       </span>
                     ) : (
                       <span className="shrink-0 rounded-full bg-[var(--color-idle-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-ink-faint)]">
@@ -148,10 +179,15 @@ export default function AppCatalog() {
                     ))}
                 </div>
                 <p className="line-clamp-4 text-xs leading-relaxed text-[var(--color-ink-muted)]">{localizedDesc(entry)}</p>
+                {entry.install_status === "failed" && entry.install_message && (
+                  <p className="line-clamp-2 rounded-md bg-[var(--color-danger-soft)] px-2 py-1 text-[10px] text-[var(--color-danger)]">
+                    {entry.install_message}
+                  </p>
+                )}
                 {clusterId && (
                   <button
                     className={entry.enabled ? "btn btn-secondary mt-1" : "btn btn-primary mt-1"}
-                    disabled={enableMutation.isPending || disableMutation.isPending}
+                    disabled={enableMutation.isPending || disableMutation.isPending || entry.install_status === "installing"}
                     onClick={() =>
                       entry.enabled ? disableMutation.mutate(entry.name) : enableMutation.mutate(entry.name)
                     }

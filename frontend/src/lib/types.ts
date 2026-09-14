@@ -169,6 +169,8 @@ export interface AddonCatalogItem {
   description: string;
   icon: string;
   enabled: boolean;
+  install_status?: "installing" | "installed" | "failed" | null;
+  install_message?: string | null;
 }
 
 export interface AddonToggleResult {
